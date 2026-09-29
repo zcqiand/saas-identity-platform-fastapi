@@ -32,4 +32,12 @@ jobs:
       - name: L3 类型（mypy --strict）
         run: mypy --strict src
       - name: 组合根装配冒烟（生成 router 挂载 + impl 缝可达）
+        # app 经 PEP 562 惰性构建：首次访问才读 env（fail-fast，禁代码兜底）——
+        # CI 冒烟显式提供 dev 占位值（suite 硬规则 §1：显式 env，非代码默认值）
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          JWT_SIGNING_KEY: dev-smoke-signing-key-32-bytes-minimum!
+          JWT_ISSUER: saas-identity-platform
+          JWT_AUDIENCE: saas-identity-platform-clients
+          JWT_TTL_SECONDS: "3600"
         run: python -c "from saas_identity_platform_fastapi.app import app; assert len(app.routes) > 0; print('ROUTES:', len(app.routes))"

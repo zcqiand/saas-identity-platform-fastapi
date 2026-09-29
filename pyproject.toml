@@ -6,6 +6,10 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    # JWT 签发（HS256，镜像 springboot JwtIssuer；REQ-2026-002 批1）
+    "pyjwt==2.10.1",
+    # 密码校验（bcrypt，家族 `plain:` 前缀约定的回退分支；REQ-2026-002 批1）
+    "bcrypt==4.3.0",
 ]
 
 [project.optional-dependencies]
@@ -35,7 +39,9 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "ARG", "PTH"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-# 生成区不直接检查；被手写区 import 时经下方 overrides 以 Any 接入
+# 生成区不作为检查入口（exclude 只影响直接检查目标）；被手写区 import 时
+# 经下方 overrides 以 silent 模式接入 —— 生成区自身错误不上报，但类型签名
+# 真实外露，impl 缝继承 Base*Api 走真类型而非 Any（不放宽 disallow_subclassing_any）
 exclude = [
     "^src/saas_identity_platform_fastapi/apis/",
     "^src/saas_identity_platform_fastapi/models/",
@@ -50,7 +56,13 @@ module = [
     "saas_identity_platform_fastapi.security_api",
     "saas_identity_platform_fastapi.entities",
 ]
-follow_imports = "skip"
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = "saas_identity_platform_fastapi.impl.*"
+# 生成 Base*Api 类体的 __init_subclass__ 钩子（pkgutil 缝发现机制）未标注，
+# 缝类继承语句必然触发 no-untyped-call；继承之外的手写代码保持全 strict
+disallow_untyped_calls = false
 
 [tool.setuptools.packages.find]
 where = ["src"]

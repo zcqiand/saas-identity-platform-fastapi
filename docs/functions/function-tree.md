@@ -53,10 +53,30 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 
 | 功能 ID | 功能名称 | 说明 | 状态 |
 |---|---|---|---|
-| M01.F01 | 用户维护 | 当前用户 whoami | 规划 |
+| M01.F01 | 用户维护 | 当前用户 whoami | 已上线 |
 | M01.F02 | 角色成员 | 给 member 分配角色（member→role binding；与 M00.F02 字段维护是不同维度） | 规划 |
 | M01.F03 | 租户成员 | 当前用户的跨租户成员关系 + 切换 | 规划 |
-| M01.F04 | SSO 登录 | 密码登录 + 失败锁定 + OIDC + 登出 | 规划 |
+| M01.F04 | SSO 登录 | 密码登录 + 失败锁定 + OIDC + 登出 | 已上线 |
+
+### M01.F01 用户维护
+
+> 当前用户身份视图。落表：`sys_user` + `tenant_member`。语义参照：springboot MeController。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M01.F01.I01 | 当前用户 whoami | 查询 | 前端+后端 | 返回当前会话用户的基础身份信息（id/email/memberships/currentTenantId，JWT claim 优先） | 已上线 |
+
+### M01.F04 SSO 登录
+
+> 鉴权入口：密码登录 + 失败锁定 + 登出。语义参照：springboot AuthController。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M01.F04.I01 | 密码登录 API | 接口 | 仅后端 | 用邮箱+密码换取 access_token + refresh_token（JWT，token 对落库） | 已上线 |
+| M01.F04.I02 | 失败锁定 | 接口 | 仅后端 | 连续 5 次密码错误锁定账户 15 分钟，窗口内拒绝登录（423 空体） | 已上线 |
+| M01.F04.I06 | 登出（本地清理） | 接口 | 前端+后端 | 登出当前会话（204 空体） | 已上线 |
+
+> I03（密码登录 UI，仅前端）不进本后端树；I04/I05/I07 见下方「已废弃功能子项」。
 
 ## M04 应用管理
 
@@ -64,7 +84,17 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 |---|---|---|---|
 | M04.F01 | 应用维护 | 应用 CRUD + 公共元数据 | 规划 |
 | M04.F02 | 应用启用/停用 | `status` 字段切换 | 规划 |
-| M04.F03 | 身份认证 | OAuth authorize + token + refresh | 规划 |
+| M04.F03 | 身份认证 | OAuth authorize + token + refresh | 已上线 |
+
+### M04.F03 身份认证
+
+> OAuth 2.0 authorization_code + refresh_token。语义参照：springboot OauthController。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M04.F03.I01 | 授权码签发 | 接口 | 前端+后端 | 校验 Bearer + redirect_uri 白名单（精确或 `?` 边界）后签发一次性 authorization_code（5 分钟过期） | 已上线 |
+| M04.F03.I02 | 令牌交换 | 接口 | 前端+后端 | 用 authorization_code 换取 access_token + refresh_token（一次性消费，redirectUri 一致性校验） | 已上线 |
+| M04.F03.I03 | 令牌刷新 | 接口 | 前端+后端 | 用 refresh_token 换取新对（rotate：旧 token 即标 revoked，重放被拒） | 已上线 |
 | M04.F04 | 菜单管理 | 菜单 CRUD + 结构 + 当前用户菜单 | 规划 |
 
 ---
@@ -75,8 +105,9 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 
 | 子项 ID | 名称 | 模块归属 | 迁移去向 | 状态 |
 |---|---|---|---|---|
-
-（暂无）
+| M01.F04.I04 | OIDC Code 换取 | M01.F04 | 合并到 M04.F03.I02 authorization_code grant（saas-2026-09-16-001+003） | 已废弃 |
+| M01.F04.I05 | refresh token | M01.F04 | 合并到 M04.F03.I02 refresh_token grant（saas-2026-09-16-001+003） | 已废弃 |
+| M01.F04.I07 | 登出（全局 SSO） | M01.F04 | 预留位；待 ADR 决策 | 已废弃 |
 
 ---
 
