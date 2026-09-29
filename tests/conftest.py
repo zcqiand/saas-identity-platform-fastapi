@@ -22,11 +22,13 @@ from saas_identity_platform_fastapi.app import create_app
 from saas_identity_platform_fastapi.entities import (
     Base,
     OauthClient,
+    SysMenu,
     SysRole,
     SysUser,
     Tenant,
     TenantApplication,
     TenantMember,
+    t_sys_role_menu,
     t_tenant_member_role,
 )
 from saas_identity_platform_fastapi.impl.config import AppConfig, normalize_database_url
@@ -80,6 +82,15 @@ MEM_CAROL_T2 = uuid.uuid4()
 ROLE1 = uuid.uuid4()
 ROLE2 = uuid.uuid4()
 
+# 批3 增补：菜单树 + 角色菜单授权（sys_menu.parent_id 无 FK；零值 UUID = 根约定）
+ZERO_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+MENU_DIR = uuid.uuid4()  # directory 根（sortOrder 2）
+MENU_USERS = uuid.uuid4()  # MENU_DIR 的子菜单（sortOrder 0）
+MENU_DASH = uuid.uuid4()  # 根菜单（sortOrder 1）
+MENU_ORPHAN = uuid.uuid4()  # parent 是未播种的孤儿菜单（me/menus 孤儿当根用例）
+MENU_ORPHAN_PARENT = uuid.uuid4()  # 只当 parent_id 用，不建行
+MENU_SECOND = uuid.uuid4()  # 第二个 client 的菜单（list 隔离断言用）
+
 _T0 = datetime(2026, 9, 29, 8, 0, 0, tzinfo=UTC)
 
 
@@ -132,6 +143,8 @@ def _seed(engine: Engine) -> None:
     """家族 dev 种子镜像（nextjs seed-db.mjs 约定）：alice/dev123456 + saas-console。
 
     批2 增补：SECOND_CLIENT_ID 是「已注册未订阅」应用（订阅面测试用）。
+    批3 增补：CLIENT_ID 菜单树四条（根 DIR/子 USERS/根 DASH/孤儿 ORPHAN）+ 第二应用菜单
+    一条；ROLE1 授权 DIR/USERS/DASH/ORPHAN 四条（嵌套+根排序+孤儿当根全覆盖）。
     """
     values: dict[type[Any], list[dict[str, Any]]] = {
         Tenant: [
@@ -298,14 +311,80 @@ def _seed(engine: Engine) -> None:
             {"member_id": MEM_ALICE_T1, "role_id": ROLE2},
             {"member_id": MEM_CAROL_T2, "role_id": ROLE2},
         ],
+        SysMenu: [
+            # type 字典：1=directory 2=menu 3=button（springboot TypeMapper）
+            {
+                "id": MENU_DIR,
+                "client_id": CLIENT_ID,
+                "parent_id": ZERO_UUID,
+                "title": "权限管理",
+                "type": 1,
+                "sort_order": 2,
+                "status": 1,
+                "created_at": _T0,
+            },
+            {
+                "id": MENU_USERS,
+                "client_id": CLIENT_ID,
+                "parent_id": MENU_DIR,
+                "title": "用户列表",
+                "type": 2,
+                "sort_order": 0,
+                "status": 1,
+                "created_at": _T0,
+                "path": "/users",
+                "component": "users/index",
+                "perms": "sys:user:list",
+            },
+            {
+                "id": MENU_DASH,
+                "client_id": CLIENT_ID,
+                "parent_id": ZERO_UUID,
+                "title": "仪表盘",
+                "type": 2,
+                "sort_order": 1,
+                "status": 1,
+                "created_at": _T0,
+                "path": "/dash",
+            },
+            {
+                "id": MENU_ORPHAN,
+                "client_id": CLIENT_ID,
+                "parent_id": MENU_ORPHAN_PARENT,  # parent 行不存在 → me/menus 孤儿当根
+                "title": "孤儿菜单",
+                "type": 2,
+                "sort_order": 5,
+                "status": 1,
+                "created_at": _T0,
+            },
+            {
+                "id": MENU_SECOND,
+                "client_id": SECOND_CLIENT_ID,
+                "parent_id": ZERO_UUID,
+                "title": "第二应用菜单",
+                "type": 2,
+                "sort_order": 0,
+                "status": 1,
+                "created_at": _T0,
+            },
+        ],
+        t_sys_role_menu: [
+            # ROLE1（alice@T1）授权四条：嵌套（DIR+USERS）+ 根（DASH）+ 孤儿（ORPHAN）
+            {"role_id": ROLE1, "menu_id": MENU_DIR},
+            {"role_id": ROLE1, "menu_id": MENU_USERS},
+            {"role_id": ROLE1, "menu_id": MENU_DASH},
+            {"role_id": ROLE1, "menu_id": MENU_ORPHAN},
+        ],
     }
     member_role_rows = values.pop(t_tenant_member_role)
+    role_menu_rows = values.pop(t_sys_role_menu)
     with Session(engine) as session:
         for model, rows in values.items():
             for row in rows:
                 session.add(model(**row))
         # join 表是 secondary Table（无 ORM 类），走核心 insert
         session.execute(t_tenant_member_role.insert(), member_role_rows)
+        session.execute(t_sys_role_menu.insert(), role_menu_rows)
         session.commit()
 
 
@@ -335,7 +414,12 @@ def _login(
     )
 
 
-def _bearer(client: TestClient, username: str = "alice") -> dict[str, str]:
-    resp = _login(client, username=username)
+def _bearer(
+    client: TestClient,
+    username: str = "alice",
+    password: str = "dev123456",
+    client_id: str = CLIENT_ID,
+) -> dict[str, str]:
+    resp = _login(client, username=username, password=password, client_id=client_id)
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['accessToken']}"}

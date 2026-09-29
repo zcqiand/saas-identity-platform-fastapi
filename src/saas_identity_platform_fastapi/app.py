@@ -137,13 +137,16 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
         # 生成区路由对若干端点只声明了 204 responses 没声明 status_code，FastAPI 回 200 null；
         # 家族契约是 204 空体（springboot ResponseEntity.noContent 参照）—— 组合根收口，不动生成区。
         # 覆盖：POST /auth/logout（批1）；批2 三个幂等 DELETE（M00.F01.I05 / M00.F02.I05 /
-        # M00.F05.I04）——/api/v1/tenants/ 下现存 DELETE 仅成员移除与应用退订，均 204。
+        # M00.F05.I04）——/api/v1/tenants/ 下现存 DELETE 仅成员移除、应用退订（批2，均 204）与
+        # 角色/角色菜单授权（批3：roles DELETE 先 resolve 404、role-menus clear 幂等，均 204）；
+        # 批3 另有 /api/v1/clients/ 菜单删除（M04.F04.I05 幂等 204）。
         if response.status_code == 200 and (
             (request.method == "POST" and request.url.path == "/api/v1/auth/logout")
             or (
                 request.method == "DELETE" and request.url.path.startswith("/api/v1/admin/tenants/")
             )
             or (request.method == "DELETE" and request.url.path.startswith("/api/v1/tenants/"))
+            or (request.method == "DELETE" and request.url.path.startswith("/api/v1/clients/"))
         ):
             return Response(status_code=204)
         return response

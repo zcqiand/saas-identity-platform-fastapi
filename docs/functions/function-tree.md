@@ -45,8 +45,8 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 |---|---|---|---|
 | M00.F01 | 租户维护 | 平台 admin 范围管理租户 | 已上线 |
 | M00.F02 | 租户成员 | tenant-scoped 成员 CRUD + 邀请/接受/状态 | 已上线 |
-| M00.F03 | 租户角色 | tenant × client 作用域角色 CRUD | 规划 |
-| M00.F04 | 角色权限 | role↔permission 矩阵 + 角色菜单授权 | 规划 |
+| M00.F03 | 租户角色 | tenant × client 作用域角色 CRUD | 已上线 |
+| M00.F04 | 角色权限 | role↔permission 矩阵 + 角色菜单授权 | 已上线 |
 | M00.F05 | 租户应用 | `tenant_application` 订阅管理 | 已上线 |
 
 ### M00.F01 租户维护
@@ -89,6 +89,33 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 | M00.F05.I02 | 订阅应用 | 接口 | 前端+后端 | 绑定 clientId（未知 clientId → 404；重复订阅 → 400 constraint violation） | 已上线 |
 | M00.F05.I03 | 更新应用订阅 | 接口 | 前端+后端 | 部分更新 status/expireTime（寻不到 → 404） | 已上线 |
 | M00.F05.I04 | 移除应用订阅 | 接口 | 前端+后端 | 幂等退订（不存在也 204；不删除应用本体） | 已上线 |
+
+### M00.F03 租户角色
+
+> op 落表：`sys_role`（uk: tenant_id+client_id+role_code）。删除级联清 `sys_role_menu` +
+> `tenant_member_role`（DB FK CASCADE）。语义参照：springboot TenantRolesController。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M00.F03.I01 | 角色列表 | 接口 | 前端+后端 | 分页查看租户角色（排序 created_at ASC + id ASC；query clientId 接收但不过滤，镜像参照） | 已上线 |
+| M00.F03.I02 | 创建角色 | 接口 | 前端+后端 | status=1、isPreset 缺省 false（clientId FK 冲突/roleCode 撞 unique → 400 constraint violation） | 已上线 |
+| M00.F03.I03 | 角色详情 | 接口 | 前端+后端 | 查看单个角色（不存在或跨租户一律 404，不泄露存在性） | 已上线 |
+| M00.F03.I04 | 更新角色 | 接口 | 前端+后端 | PATCH 只应用 roleName/description 非空字段（status 字段被忽略，镜像参照） | 已上线 |
+| M00.F03.I05 | 删除角色 | 接口 | 前端+后端 | 先 resolve（不存在 → 404）；级联清理所有成员角色绑定与权限关联（DB FK） | 已上线 |
+
+### M00.F04 角色权限
+
+> op 落表：`sys_role_menu`（role_id+menu_id 复合主键）。PUT 全量替换（差量删 +
+> ON CONFLICT DO NOTHING）。语义参照：springboot TenantRoleMenusController。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M00.F04.I01 | 权限矩阵绑定 | 接口 | 前端+后端 | 权限码全量替换——shared 契约无对应生成端点，保持规划（镜像 M00.F02「接受邀请」条目的先例，见其表后注） | 规划 |
+| M00.F04.I02 | 角色已授权菜单查询 | 查询 | 前端+后端 | RoleMenuGrant{roleId,tenantId,menuIds sorted,updatedAt=sys_role.updated_at} | 已上线 |
+| M00.F04.I03 | 整批设置角色菜单 | 接口 | 前端+后端 | 全量替换（空 menuIds=合法清空；touch role.updatedAt；不存在 menuId 撞 FK → 400） | 已上线 |
+| M00.F04.I04 | 清空角色菜单 | 接口 | 前端+后端 | 纯 bulk delete 幂等 204（不 resolve role、不 touch updatedAt） | 已上线 |
+
+> I01（权限矩阵绑定·权限码全量替换）镜像 springboot 保持「规划」——shared 契约无对应端点。
 
 ## M01 认证管理
 
@@ -134,6 +161,7 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 | M04.F01 | 应用维护 | 应用 CRUD + 公共元数据 | 规划 |
 | M04.F02 | 应用启用/停用 | `status` 字段切换 | 规划 |
 | M04.F03 | 身份认证 | OAuth authorize + token + refresh | 已上线 |
+| M04.F04 | 菜单管理 | 菜单 CRUD + 结构 + 当前用户菜单 | 已上线 |
 
 ### M04.F03 身份认证
 
@@ -144,7 +172,22 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 | M04.F03.I01 | 授权码签发 | 接口 | 前端+后端 | 校验 Bearer + redirect_uri 白名单（精确或 `?` 边界）后签发一次性 authorization_code（5 分钟过期） | 已上线 |
 | M04.F03.I02 | 令牌交换 | 接口 | 前端+后端 | 用 authorization_code 换取 access_token + refresh_token（一次性消费，redirectUri 一致性校验） | 已上线 |
 | M04.F03.I03 | 令牌刷新 | 接口 | 前端+后端 | 用 refresh_token 换取新对（rotate：旧 token 即标 revoked，重放被拒） | 已上线 |
-| M04.F04 | 菜单管理 | 菜单 CRUD + 结构 + 当前用户菜单 | 规划 |
+
+### M04.F04 菜单管理
+
+> op 落表：`sys_menu`（parent_id 无 FK，零值 UUID=根；级联只清 `sys_role_menu`）。
+> admin 授权入口在 M00.F04。语义参照：springboot ClientMenusController + MeController.menus。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M04.F04.I01 | 菜单列表 | 查询 | 前端+后端 | 按 client 查扁平菜单清单（含 parentId，不组树、不分页，镜像参照） | 已上线 |
+| M04.F04.I02 | 创建菜单 | 接口 | 前端+后端 | parentId 缺省零值 UUID、sortOrder 缺省 0、status=1（不校验 parent 存在；契约 type 必填，参照的 directory 缺省在本仓不可达） | 已上线 |
+| M04.F04.I03 | 菜单详情 | 接口 | 前端+后端 | 查看单个菜单（不存在 → 404；不比对 clientId，镜像参照） | 已上线 |
+| M04.F04.I04 | 更新菜单 | 接口 | 前端+后端 | PATCH 只应用 title/path/component/perms/icon/sortOrder（parentId/type/status 忽略） | 已上线 |
+| M04.F04.I05 | 删除菜单 | 接口 | 前端+后端 | 幂等删除（不存在也 204；级联只清 sys_role_menu 授权，子菜单不级联——镜像参照实现） | 已上线 |
+| M04.F04.I06 | 同级排序 | 接口 | 前端+后端 | reorder：目标 menu 的 sortOrder=其在 orderedMenuIds 中的下标，返回该 client 全量扁平列表 | 已上线 |
+| M04.F04.I07 | 切换父级 | 接口 | 前端+后端 | move：parentId 非 null 才改（坏 UUID → 400；不校验存在/成环，镜像参照） | 已上线 |
+| M04.F04.I08 | 当前用户有效菜单 | 查询 | 前端+后端 | 四跳 join（member→member_role→role_menu→menu）按 clientId 组树；零值 parent→根、孤儿当根、roots 按 sortOrder 升序 | 已上线 |
 
 ---
 

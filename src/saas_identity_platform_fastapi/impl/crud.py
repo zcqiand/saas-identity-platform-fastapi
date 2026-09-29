@@ -1,11 +1,15 @@
-"""租户面 CRUD 共用缝（REQ-2026-003）：家族分页窗口 + unique 冲突收口。
+"""租户面 CRUD 共用缝（REQ-2026-003）：家族分页窗口 + unique 冲突收口 + UUID 解析。
 
 - 分页家族约定 0-based 默认 0/20（contract-test 分页对齐先例）
 - 重复/冲突一律 400 BAD_REQUEST "constraint violation"，全家族无 409
   （springboot GlobalExceptionHandler 参照）
+- 路径/请求体 UUID 坏字面量 → 400（springboot UUID.fromString → IllegalArgumentException
+  → GlobalExceptionHandler 400 的镜像）
 """
 
 from __future__ import annotations
+
+import uuid
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -34,3 +38,11 @@ def commit_or_bad_request(session: Session, action: str) -> None:
     except IntegrityError as exc:
         session.rollback()
         raise BadRequestError(f"constraint violation: {action}: {exc.orig}") from exc
+
+
+def uuid_or_bad_request(value: str) -> uuid.UUID:
+    """坏 UUID 字面量 → 400（springboot UUID.fromString → IllegalArgumentException → 400 镜像）。"""
+    try:
+        return uuid.UUID(value)
+    except (ValueError, AttributeError) as exc:
+        raise BadRequestError(f"invalid uuid: {value}") from exc
