@@ -4,9 +4,32 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+import bcrypt
+import httpx
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.orm import Session
+
+from saas_identity_platform_fastapi.app import create_app
+from saas_identity_platform_fastapi.entities import (
+    Base,
+    OauthClient,
+    SysRole,
+    SysUser,
+    Tenant,
+    TenantApplication,
+    TenantMember,
+    t_tenant_member_role,
+)
+from saas_identity_platform_fastapi.impl.config import AppConfig, normalize_database_url
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -33,3 +56,286 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         json.dumps({"schema": 1, "tests": entries}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+SCRATCH_DB = "saas_fastapi_scratch"
+
+_JWT_KEY = "test-signing-key-32-bytes-minimum!"
+_JWT_ISSUER = "saas-identity-platform"
+_JWT_AUDIENCE = "saas-identity-platform-clients"
+
+CLIENT_ID = "saas-console"
+REDIRECT = "http://localhost:5101/callback"
+SECOND_CLIENT_ID = "second-app"
+
+TENANT1 = uuid.uuid4()
+TENANT2 = uuid.uuid4()
+ALICE = uuid.uuid4()
+BOB = uuid.uuid4()
+CAROL = uuid.uuid4()
+BOB_MEMBER = uuid.uuid4()
+MEM_ALICE_T1 = uuid.uuid4()
+MEM_ALICE_T2 = uuid.uuid4()
+MEM_CAROL_T2 = uuid.uuid4()
+ROLE1 = uuid.uuid4()
+ROLE2 = uuid.uuid4()
+
+_T0 = datetime(2026, 9, 29, 8, 0, 0, tzinfo=UTC)
+
+
+def _sql_exec(engine: Engine, statement: str) -> None:
+    """DDL 专用（CREATE/DROP DATABASE 不能进事务块）：AUTOCOMMIT 直发。"""
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text(statement))
+
+
+def _scratch_urls() -> tuple[object, object]:
+    """fail-fast 在 fixture 内而非 import 期：pytest 收集（trace collect-only）不碰 env。"""
+    raw = os.environ.get("DATABASE_URL")
+    if raw is None or raw == "":
+        raise RuntimeError(
+            "env DATABASE_URL required —— L4 打 PG 真库（scratch 库与其同服务器）；"
+            "gate 表驱动注入 saas_test URL，手工跑先显式 export（suite 硬规则 §1）"
+        )
+    server = make_url(normalize_database_url(raw))
+    # scratch 与测试库同服务器：借 DATABASE_URL 的 host/凭据，库名换成 scratch
+    return server.set(database="postgres"), server.set(database=SCRATCH_DB)
+
+
+@pytest.fixture(scope="session")
+def scratch_engine() -> Iterator[Engine]:
+    """每轮测试独占 scratch 库：DROP→CREATE→uuid 扩展→真实 schema create_all→收工 DROP。
+
+    WITH (FORCE) 兜底上次异常退出残留的连接（PG 13+，本服务器 16.14）。
+    """
+    admin_url, scratch_url = _scratch_urls()  # fail-fast：无 DATABASE_URL 即红
+    admin = create_engine(admin_url)
+    _sql_exec(admin, f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
+    _sql_exec(admin, f'CREATE DATABASE "{SCRATCH_DB}"')
+    engine = create_engine(scratch_url, pool_pre_ping=True)
+    # uuid-ossp 扩展建在 scratch 库内（admin 连接落在 postgres 库，别搞混）
+    _sql_exec(engine, 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
+    _sql_exec(admin, f'DROP DATABASE "{SCRATCH_DB}" WITH (FORCE)')
+    admin.dispose()
+
+
+def _truncate_all(engine: Engine) -> None:
+    tables = ", ".join(f'"{t}"' for t in sorted(Base.metadata.tables))
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+def _seed(engine: Engine) -> None:
+    """家族 dev 种子镜像（nextjs seed-db.mjs 约定）：alice/dev123456 + saas-console。
+
+    批2 增补：SECOND_CLIENT_ID 是「已注册未订阅」应用（订阅面测试用）。
+    """
+    values: dict[type[Any], list[dict[str, Any]]] = {
+        Tenant: [
+            {
+                "id": TENANT1,
+                "tenant_key": "t1",
+                "name": "租户一",
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": TENANT2,
+                "tenant_key": "t2",
+                "name": "租户二",
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+        ],
+        SysUser: [
+            {
+                "id": ALICE,
+                "username": "alice",
+                "password": "plain:dev123456",
+                "status": 1,
+                "failed_attempts": 0,
+                "email": "alice@example.com",
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": BOB,
+                "username": "bob",
+                "password": bcrypt.hashpw(b"bobpass123", bcrypt.gensalt(rounds=4)).decode(),
+                "status": 1,
+                "failed_attempts": 0,
+                "email": "bob@example.com",
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": CAROL,
+                "username": "carol",
+                "password": "plain:carolpass",
+                "status": 1,
+                "failed_attempts": 0,
+                "email": "carol@example.com",
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+        ],
+        OauthClient: [
+            {
+                "id": uuid.uuid4(),
+                "client_id": CLIENT_ID,
+                "client_secret": "dev-secret",
+                "client_name": "SaaS Console",
+                "grant_types": "authorization_code,refresh_token",
+                "redirect_uris": f"{REDIRECT},http://localhost:3000/callback",
+                "access_token_validity": 7200,
+                "refresh_token_validity": 2592000,
+                "auto_approve": False,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": uuid.uuid4(),
+                "client_id": SECOND_CLIENT_ID,
+                "client_secret": "dev-secret-2",
+                "client_name": "Second App",
+                "grant_types": "authorization_code",
+                "redirect_uris": "http://localhost:5201/callback",
+                "access_token_validity": 7200,
+                "refresh_token_validity": 2592000,
+                "auto_approve": False,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+        ],
+        TenantApplication: [
+            {
+                "id": uuid.uuid4(),
+                "tenant_id": TENANT1,
+                "client_id": CLIENT_ID,
+                "status": 1,
+                "created_at": _T0,
+            },
+            {
+                "id": uuid.uuid4(),
+                "tenant_id": TENANT2,
+                "client_id": CLIENT_ID,
+                "status": 1,
+                "created_at": _T0,
+            },
+        ],
+        TenantMember: [
+            {
+                "id": BOB_MEMBER,
+                "tenant_id": TENANT1,
+                "user_id": BOB,
+                "is_owner": False,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": MEM_ALICE_T1,
+                "tenant_id": TENANT1,
+                "user_id": ALICE,
+                "is_owner": True,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": MEM_ALICE_T2,
+                "tenant_id": TENANT2,
+                "user_id": ALICE,
+                "is_owner": False,
+                "status": 1,
+                "created_at": _T0 + timedelta(seconds=1),
+                "updated_at": _T0,
+            },
+            {
+                "id": MEM_CAROL_T2,
+                "tenant_id": TENANT2,
+                "user_id": CAROL,
+                "is_owner": False,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+        ],
+        SysRole: [
+            {
+                "id": ROLE1,
+                "tenant_id": TENANT1,
+                "client_id": CLIENT_ID,
+                "role_code": "admin",
+                "role_name": "管理员",
+                "is_preset": True,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+            {
+                "id": ROLE2,
+                "tenant_id": TENANT2,
+                "client_id": CLIENT_ID,
+                "role_code": "member",
+                "role_name": "成员",
+                "is_preset": True,
+                "status": 1,
+                "created_at": _T0,
+                "updated_at": _T0,
+            },
+        ],
+        t_tenant_member_role: [
+            # 跨租户绑定原样吐出（家族约定：member 绑定即真值，视图层不按 tenant_id 过滤）
+            {"member_id": MEM_ALICE_T1, "role_id": ROLE1},
+            {"member_id": MEM_ALICE_T1, "role_id": ROLE2},
+            {"member_id": MEM_CAROL_T2, "role_id": ROLE2},
+        ],
+    }
+    member_role_rows = values.pop(t_tenant_member_role)
+    with Session(engine) as session:
+        for model, rows in values.items():
+            for row in rows:
+                session.add(model(**row))
+        # join 表是 secondary Table（无 ORM 类），走核心 insert
+        session.execute(t_tenant_member_role.insert(), member_role_rows)
+        session.commit()
+
+
+@pytest.fixture()
+def client(scratch_engine: Engine) -> Iterator[TestClient]:
+    config = AppConfig(
+        database_url=str(scratch_engine.url),
+        jwt_signing_key=_JWT_KEY,
+        jwt_issuer=_JWT_ISSUER,
+        jwt_audience=_JWT_AUDIENCE,
+        jwt_ttl_seconds=3600,
+    )
+    _truncate_all(scratch_engine)
+    _seed(scratch_engine)
+    yield TestClient(create_app(config, engine=scratch_engine))
+
+
+def _login(
+    client: TestClient,
+    username: str = "alice",
+    password: str = "dev123456",
+    client_id: str = CLIENT_ID,
+) -> httpx.Response:
+    return client.post(
+        "/api/v1/auth/login",
+        json={"username": username, "password": password, "clientId": client_id},
+    )
+
+
+def _bearer(client: TestClient, username: str = "alice") -> dict[str, str]:
+    resp = _login(client, username=username)
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['accessToken']}"}

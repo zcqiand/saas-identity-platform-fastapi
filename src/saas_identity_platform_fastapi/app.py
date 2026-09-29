@@ -7,10 +7,14 @@ create_app(config, engine) 工厂装配：生成 router + 每请求上下文中�
 
 from __future__ import annotations
 
+import inspect
+import types
 from collections.abc import Awaitable, Callable
+from typing import Union, get_args, get_origin
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from pydantic import Strict
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
@@ -65,6 +69,45 @@ _ROUTERS = (
 )
 
 
+def _strict_base(annotation: object) -> object | None:
+    """取 Strict 注记的基型（int/str/…）；非 Annotated-Strict 形状（含 Optional 包裹）返回 None。"""
+    origin = get_origin(annotation)
+    if origin is Union or origin is types.UnionType:
+        members = [a for a in get_args(annotation) if a is not type(None)]
+        return _strict_base(members[0]) if len(members) == 1 else None
+    args = get_args(annotation)
+    if args and any(isinstance(m, Strict) for m in args[1:]):
+        base: object = args[0]
+        return base
+    return None
+
+
+def _relax_strict_query_ints(router: APIRouter) -> None:
+    """生成契约把分页 query 参数钉成 StrictInt；query 串恒是字符串，FastAPI+pydantic v2
+    strict 模式拒收 "0" 这类字面量 → 分页请求必 422（openapi-generator python-fastapi 缺陷）。
+    组合根收口：本版 FastAPI include 走 _IncludedRouter 惰性物化，effective dependant 是
+    请求期从 route.endpoint 重新分析出来的（改已构建的 dependant 无效），故在 include 前
+    给 endpoint 挂改写后的 __signature__——StrictInt → lax int（Query alias/默认值原样保留）；
+    body 内 Strict 语义不动；生成文件零改动（只改运行时函数属性）。
+    """
+    for route in router.routes:
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        signature = inspect.signature(endpoint)
+        changed = False
+        params = []
+        for param in signature.parameters.values():
+            base = _strict_base(param.annotation)
+            if base is None:
+                params.append(param)
+                continue
+            params.append(param.replace(annotation=base))
+            changed = True
+        if changed:
+            endpoint.__signature__ = signature.replace(parameters=params)
+
+
 def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
     """装配完整应用。测试注入内存 engine（仓铁律 mock-friendly）；生产从 config.database_url 建。"""
     db_engine = (
@@ -91,12 +134,16 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
         finally:
             reset_context(token)
             session.close()
-        # 生成区路由对 logout 只声明了 204 responses 没声明 status_code，FastAPI 回 200 null；
+        # 生成区路由对若干端点只声明了 204 responses 没声明 status_code，FastAPI 回 200 null；
         # 家族契约是 204 空体（springboot ResponseEntity.noContent 参照）—— 组合根收口，不动生成区。
-        if (
-            request.method == "POST"
-            and request.url.path == "/api/v1/auth/logout"
-            and response.status_code == 200
+        # 覆盖：POST /auth/logout（批1）；批2 三个幂等 DELETE（M00.F01.I05 / M00.F02.I05 /
+        # M00.F05.I04）——/api/v1/tenants/ 下现存 DELETE 仅成员移除与应用退订，均 204。
+        if response.status_code == 200 and (
+            (request.method == "POST" and request.url.path == "/api/v1/auth/logout")
+            or (
+                request.method == "DELETE" and request.url.path.startswith("/api/v1/admin/tenants/")
+            )
+            or (request.method == "DELETE" and request.url.path.startswith("/api/v1/tenants/"))
         ):
             return Response(status_code=204)
         return response
@@ -115,6 +162,7 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
         return Response(status_code=423)
 
     for router in _ROUTERS:
+        _relax_strict_query_ints(router)
         app.include_router(router)
     return app
 

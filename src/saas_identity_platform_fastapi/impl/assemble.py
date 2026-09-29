@@ -47,6 +47,19 @@ def role_ids_of(session: Session, member_id: uuid.UUID) -> list[str]:
     return [str(row[0]) for row in rows]
 
 
+# 写路径反向映射（springboot MemberStatusMapper 镜像）：PATCH status 双写 member+user 共用
+_MEMBER_STATUS_TO_DB: dict[str, int] = {
+    "active": 1,
+    "invited": 2,
+    "suspended": 3,
+    "disabled": 0,
+}
+
+
+def member_status_to_db(value: TenantMemberStatus) -> int:
+    return _MEMBER_STATUS_TO_DB[value.value]
+
+
 def to_membership(session: Session, member: TenantMember) -> TenantMembership:
     """tenant_member 行 → TenantMembership（契约：id/userId/tenantId/roleIds/status/joinedAt）。
 

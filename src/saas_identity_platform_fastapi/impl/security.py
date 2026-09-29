@@ -18,7 +18,11 @@ from sqlalchemy.orm import Session
 from saas_identity_platform_fastapi.entities import OauthAccessToken, OauthClient, OauthRefreshToken
 from saas_identity_platform_fastapi.impl.config import AppConfig
 from saas_identity_platform_fastapi.impl.context import RequestContext
-from saas_identity_platform_fastapi.impl.errors import BadRequestError, InvalidCredentialsError
+from saas_identity_platform_fastapi.impl.errors import (
+    BadRequestError,
+    ForbiddenError,
+    InvalidCredentialsError,
+)
 
 # springboot TokenIssuer 参照：access 行 +1h / refresh 行 +30d，固定家族口径
 _ACCESS_TTL = timedelta(hours=1)
@@ -104,6 +108,19 @@ def require_bearer(ctx: RequestContext, issuer: JwtIssuer) -> dict[str, object]:
     if header is None or not header.startswith("Bearer "):
         raise InvalidCredentialsError("Bearer token required")
     return issuer.decode(header[len("Bearer ") :].strip())
+
+
+def verify_path_tenant(ctx: RequestContext, tenant_id: str) -> uuid.UUID:
+    """springboot TenantGuard 镜像：路径 tenantId 必须 = JWT tenant_id claim，不等 → 403。
+
+    坏 UUID 不接（mirror springboot UUID.parse：ValueError 直接 500）。
+    """
+    claims = require_bearer(ctx, ctx.request.app.state.jwt)
+    path_tenant = uuid.UUID(tenant_id)
+    raw = claims.get("tenant_id")
+    if raw != str(path_tenant):
+        raise ForbiddenError(f"tenant mismatch: path={path_tenant} jwt={raw}")
+    return path_tenant
 
 
 class TokenIssuer:
