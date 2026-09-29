@@ -1,11 +1,17 @@
 """批1 认证底座断言（REQ-2026-002；语义参照 saas-identity-platform-springboot）。
 
-sqlite 内存种子直连 ASGI app（无网/无真库/无真端口，仓铁律 mock-friendly）；
+PG 真库直连（2026-09-29 人裁，取代 sqlite mock）：DATABASE_URL env fail-fast
+（gate 表驱动注入 ``saas_test`` URL，L4_DB_INJECT_REPOS 通道）；测试在该 URL
+同一台 PG 服务器上建 **scratch 库** ``saas_fastapi_scratch``（每轮 DROP+CREATE
++ ``Base.metadata.create_all``，收工 DROP）——家族 ``saas_test`` 种子已被
+react/vue/nextjs 测试链占用（alice/saas-console 同 key），直灌会互踩（锁定
+测试会给共享用户上 15 分钟锁）；scratch 用后必 DROP（家族约定）。
 家族 dev 约定：密码列可存 ``plain:{password}`` 占位，bcrypt 哈希为回退分支。
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -16,10 +22,9 @@ import httpx
 import jwt as pyjwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
 from saas_identity_platform_fastapi.app import create_app
 from saas_identity_platform_fastapi.entities import (
@@ -34,15 +39,27 @@ from saas_identity_platform_fastapi.entities import (
     TenantMember,
     t_tenant_member_role,
 )
-from saas_identity_platform_fastapi.impl.config import AppConfig
+from saas_identity_platform_fastapi.impl.config import AppConfig, normalize_database_url
 
-TEST_CONFIG = AppConfig(
-    database_url="sqlite://",
-    jwt_signing_key="test-signing-key-32-bytes-minimum!",
-    jwt_issuer="saas-identity-platform",
-    jwt_audience="saas-identity-platform-clients",
-    jwt_ttl_seconds=3600,
-)
+SCRATCH_DB = "saas_fastapi_scratch"
+
+_JWT_KEY = "test-signing-key-32-bytes-minimum!"
+_JWT_ISSUER = "saas-identity-platform"
+_JWT_AUDIENCE = "saas-identity-platform-clients"
+
+
+def _scratch_urls() -> tuple[object, object]:
+    """fail-fast 在 fixture 内而非 import 期：pytest 收集（trace collect-only）不碰 env。"""
+    raw = os.environ.get("DATABASE_URL")
+    if raw is None or raw == "":
+        raise RuntimeError(
+            "env DATABASE_URL required —— L4 打 PG 真库（scratch 库与其同服务器）；"
+            "gate 表驱动注入 saas_test URL，手工跑先显式 export（suite 硬规则 §1）"
+        )
+    server = make_url(normalize_database_url(raw))
+    # scratch 与测试库同服务器：借 DATABASE_URL 的 host/凭据，库名换成 scratch
+    return server.set(database="postgres"), server.set(database=SCRATCH_DB)
+
 
 CLIENT_ID = "saas-console"
 REDIRECT = "http://localhost:5101/callback"
@@ -62,23 +79,36 @@ ROLE2 = uuid.uuid4()
 _T0 = datetime(2026, 9, 29, 8, 0, 0, tzinfo=UTC)
 
 
-def _make_engine() -> Engine:
-    # sqlite 无 PG 方言 server_default（uuid_generate_v4() / 'Bearer'::character varying）——
-    # 测试侧元数据适配：剥离 PG 专属默认值（mock-friendly；种子显式赋值，不依赖任何默认）
-    for table in Base.metadata.tables.values():
-        for column in table.columns:
-            default_text = (
-                str(column.server_default.arg) if column.server_default is not None else ""
-            )
-            if "::" in default_text or "uuid_generate_v4" in default_text:
-                column.server_default = None
-    engine = create_engine(
-        "sqlite://",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
+def _sql_exec(engine: Engine, statement: str) -> None:
+    """DDL 专用（CREATE/DROP DATABASE 不能进事务块）：AUTOCOMMIT 直发。"""
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text(statement))
+
+
+@pytest.fixture(scope="session")
+def scratch_engine() -> Iterator[Engine]:
+    """每轮测试独占 scratch 库：DROP→CREATE→uuid 扩展→真实 schema create_all→收工 DROP。
+
+    WITH (FORCE) 兜底上次异常退出残留的连接（PG 13+，本服务器 16.14）。
+    """
+    admin_url, scratch_url = _scratch_urls()  # fail-fast：无 DATABASE_URL 即红
+    admin = create_engine(admin_url)
+    _sql_exec(admin, f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
+    _sql_exec(admin, f'CREATE DATABASE "{SCRATCH_DB}"')
+    engine = create_engine(scratch_url, pool_pre_ping=True)
+    # uuid-ossp 扩展建在 scratch 库内（admin 连接落在 postgres 库，别搞混）
+    _sql_exec(engine, 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
     Base.metadata.create_all(engine)
-    return engine
+    yield engine
+    engine.dispose()
+    _sql_exec(admin, f'DROP DATABASE "{SCRATCH_DB}" WITH (FORCE)')
+    admin.dispose()
+
+
+def _truncate_all(engine: Engine) -> None:
+    tables = ", ".join(f'"{t}"' for t in sorted(Base.metadata.tables))
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
 
 
 def _seed(engine: Engine) -> None:
@@ -246,10 +276,17 @@ def _seed(engine: Engine) -> None:
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    engine = _make_engine()
-    _seed(engine)
-    yield TestClient(create_app(TEST_CONFIG, engine=engine))
+def client(scratch_engine: Engine) -> Iterator[TestClient]:
+    config = AppConfig(
+        database_url=str(scratch_engine.url),
+        jwt_signing_key=_JWT_KEY,
+        jwt_issuer=_JWT_ISSUER,
+        jwt_audience=_JWT_AUDIENCE,
+        jwt_ttl_seconds=3600,
+    )
+    _truncate_all(scratch_engine)
+    _seed(scratch_engine)
+    yield TestClient(create_app(config, engine=scratch_engine))
 
 
 def _db(engine: Engine) -> Session:
@@ -318,10 +355,10 @@ def test_login_success_full_shape(client: TestClient) -> None:
     # HS256 JWT 可解码：sub/tenant_id/iss/aud
     claims = pyjwt.decode(
         body["accessToken"],
-        key=TEST_CONFIG.jwt_signing_key,
+        key=_JWT_KEY,
         algorithms=["HS256"],
-        audience=TEST_CONFIG.jwt_audience,
-        issuer=TEST_CONFIG.jwt_issuer,
+        audience=_JWT_AUDIENCE,
+        issuer=_JWT_ISSUER,
     )
     assert claims["sub"] == str(ALICE)
     assert claims["tenant_id"] == str(TENANT1)
@@ -454,10 +491,10 @@ def test_token_code_exchange_once(client: TestClient) -> None:
     assert body["refreshToken"].startswith("rt_")
     claims = pyjwt.decode(
         body["accessToken"],
-        key=TEST_CONFIG.jwt_signing_key,
+        key=_JWT_KEY,
         algorithms=["HS256"],
-        audience=TEST_CONFIG.jwt_audience,
-        issuer=TEST_CONFIG.jwt_issuer,
+        audience=_JWT_AUDIENCE,
+        issuer=_JWT_ISSUER,
     )
     assert claims["sub"] == str(ALICE)
     # 一次性消费：重放 → 400

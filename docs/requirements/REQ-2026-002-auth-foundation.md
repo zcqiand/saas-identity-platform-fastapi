@@ -54,7 +54,7 @@ env（DATABASE_URL/JWT_SIGNING_KEY/JWT_ISSUER/JWT_AUDIENCE/JWT_TTL_SECONDS）fai
 
 | 任务 ID | 任务描述 | 类型 | 负责人 | 预估 | 状态 |
 |---|---|---|---|---|---|
-| T-1 | red-first：批1 全部断言测试（httpx ASGITransport + sqlite 内存种子，挂 M01.F01.I01/M01.F04.I01/I02/I06/M04.F03.I01/I02/I03） | 测试 | claude | 中 | 待开始 |
+| T-1 | red-first：批1 全部断言测试（httpx ASGI 直连 + PG 真库 scratch 种子，2026-09-29 人裁取代 sqlite mock，挂 M01.F01.I01/M01.F04.I01/I02/I06/M04.F03.I01/I02/I03） | 测试 | claude | 中 | 待开始 |
 | T-2 | impl/ 基座：config（env fail-fast）/ context（每请求 session+request contextvar）/ errors（家族 ErrorResponse {code,message} 映射）/ security（HS256 JwtIssuer + TokenIssuer 落库对 + 密码校验）| 开发 | claude | 中 | 待开始 |
 | T-3 | AuthApiImpl + OauthApiImpl + MeApiImpl(whoami) 对齐 springboot 语义逐条落实现 | 开发 | claude | 大 | 待开始 |
 | T-4 | app.py 组合根重写：create_app(config, engine) 工厂 + 中间件 + 异常 handler；CI 装配冒烟显式 env | 开发 | claude | 小 | 待开始 |
@@ -79,6 +79,6 @@ env（DATABASE_URL/JWT_SIGNING_KEY/JWT_ISSUER/JWT_AUDIENCE/JWT_TTL_SECONDS）fai
 | 风险 | 影响面 | 缓解 | 回滚方式 |
 |---|---|---|---|
 | 语义与家族分叉（错误码/锁定阈值/白名单规则） | contract-test 批5 接入 | 逐条对照 springboot 源码实现，注释标注参照行 | git revert 本批 commit |
-| sqlite 测试种子与 PG 行为差异（uuid 默认值/时区） | L4 假绿 | 种子显式赋全部列值；aware datetime 全链统一 | 断言失败即红，无静默 |
+| 测试直连远程 PG（tailnet RTT + 丢包） | L4 变慢/轮换假红 | scratch 库建在同服务器；假红先 ping 看丢包，隔离复跑裁真伪（react 真链路先例） | 断言失败即红，无静默 |
 | env fail-fast 破坏 CI 装配冒烟 | CI | CI 步骤显式 export dev 值（非代码兜底，硬规则 §1 合规） | CI yaml 独立可回退 |
 | mypy strict 与生成区 Any 缝隙 | L3 | 生成区 follow_imports=skip 既有接线；impl 不显式 Any/type: ignore | 既有 pyproject 配置 |

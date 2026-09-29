@@ -9,7 +9,8 @@ SaaS 多租户多应用身份平台（`saas-identity-platform-fastapi`）——�
 ```bash
 # 按 fastapi 栈替换为实际命令
 npm install        # 安装依赖
-npm test           # 全量测试（无 Key / 无 Docker / 无网可跑）
+# 测试（L4 打家族 PG 真库，DATABASE_URL 由 gate 注入或显式 export；无网不可跑）
+source .venv/Scripts/activate && python -m pytest
 npm run dev        # 本地开发
 npm run build      # 生产构建
 ```
