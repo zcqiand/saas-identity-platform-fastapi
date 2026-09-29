@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "suite_version": "0.6.0",
+  "project": "saas-identity-platform-fastapi",
+  "stack": "fastapi",
+  "gates": {
+    "L1": {
+      "name": "格式",
+      "cmd": [
+        "ruff",
+        "format",
+        "--check",
+        "src",
+        "tests"
+      ],
+      "fix": "运行 `ruff format src tests` 后重试。"
+    },
+    "L2": {
+      "name": "静态检查",
+      "cmd": [
+        "ruff",
+        "check",
+        "src",
+        "tests"
+      ],
+      "fix": "逐条修复 ruff。禁止 `# noqa` 掩盖，除非同行注释给出理由。"
+    },
+    "L3": {
+      "name": "类型",
+      "cmd": [
+        "mypy",
+        "--strict",
+        "src"
+      ],
+      "fix": "补全类型标注。禁止 Any / type: ignore 绕过，除非附 ADR 说明。"
+    },
+    "L4": {
+      "name": "测试",
+      "cmd": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "--tb=short"
+      ],
+      "fix": "先让测试变绿，再谈重构。测试客户端用 httpx ASGITransport 直连 app，不起真端口。"
+    }
+  },
+  "trace_cmd": [
+    "python",
+    "-m",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "-m",
+    ""
+  ],
+  "trace_env": {
+    "TRACE_MAP": "1"
+  },
+  "source_dirs": [
+    "src"
+  ],
+  "test_dirs": [
+    "tests"
+  ]
+}
