@@ -12,13 +12,22 @@ dependencies = [
 dev = [
     "pytest>=8",
     "httpx>=0.27",
-    "ruff>=0.6",
-    "mypy>=1.11",
+    # ruff/mypy 故意不在依赖里 —— suite 钉版全局工具链（gate.py RUFF_PINNED_VERSION），
+    # 项目装新版会在 venv 遮蔽钉版触发 [RUFF-PIN] exit 2（2026-09-29 实测）
+    "sqlacodegen==4.0.4",
+    "psycopg2-binary>=2.9",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# 生成区禁手改（gen-shared.sh / scaffold-entities.sh 产物），不进格式与 lint 门
+extend-exclude = [
+    "src/saas_identity_platform_fastapi/apis",
+    "src/saas_identity_platform_fastapi/models",
+    "src/saas_identity_platform_fastapi/security_api.py",
+    "src/saas_identity_platform_fastapi/entities.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "ARG", "PTH"]
@@ -26,6 +35,25 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "ARG", "PTH"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+# 生成区不直接检查；被手写区 import 时经下方 overrides 以 Any 接入
+exclude = [
+    "^src/saas_identity_platform_fastapi/apis/",
+    "^src/saas_identity_platform_fastapi/models/",
+    "^src/saas_identity_platform_fastapi/security_api\\.py$",
+    "^src/saas_identity_platform_fastapi/entities\\.py$",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "saas_identity_platform_fastapi.apis.*",
+    "saas_identity_platform_fastapi.models.*",
+    "saas_identity_platform_fastapi.security_api",
+    "saas_identity_platform_fastapi.entities",
+]
+follow_imports = "skip"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

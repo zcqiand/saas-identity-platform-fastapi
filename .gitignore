@@ -14,3 +14,6 @@ __pycache__/
 .superpowers/
 .mcp.json
 *.egg-info/
+
+# codegen 中间产物（gen-shared.sh 工作目录，不入库）
+.openapi-tmp/
