@@ -5,7 +5,7 @@
 | 提出人 | zcqiand |
 | 提出日期 | 2026-09-29 |
 | 优先级 | P0 |
-| 状态 | 已评审 |
+| 状态 | 已验收（2026-09-30，T-1～T-5 全批完成，见 §3 与 AC-5 核验） |
 | 关联 ADR | ADR-0041（suite：fastapi codegen 选型三层全生成） |
 
 ## 1. 需求描述
@@ -50,11 +50,11 @@ TypeSpec SSOT）定义的**全部业务面**实现到与家族既有后端（spr
 
 | 任务 ID | 任务描述 | 类型 | 负责人 | 预估 | 状态 |
 |---|---|---|---|---|---|
-| T-1 | 批1 认证底座：密码登录/失败锁定/登出（M01.F04）+ OAuth authorize/token/refresh（M04.F03）+ whoami（M01.F01）——其余一切的前置 | 开发 | claude | 大 | 待开始 |
-| T-2 | 批2 租户面：租户维护（M00.F01）+ 租户成员（M00.F02）+ 租户应用（M00.F05） | 开发 | claude | 大 | 待开始 |
-| T-3 | 批3 权限与菜单：租户角色（M00.F03）+ 角色权限矩阵（M00.F04）+ 菜单管理（M04.F04） | 开发 | claude | 大 | 待开始 |
-| T-4 | 批4 应用与用户关系网收尾：应用维护/启停（M04.F01、M04.F02）+ 角色成员/跨租户（M01.F02、M01.F03） | 开发 | claude | 中 | 待开始 |
-| T-5 | 批5 contract-test 接入本仓 target + live 全绿收口（AC-1） | 开发 | claude | 中 | 待开始 |
+| T-1 | 批1 认证底座：密码登录/失败锁定/登出（M01.F04）+ OAuth authorize/token/refresh（M04.F03）+ whoami（M01.F01）——其余一切的前置 | 开发 | claude | 大 | 已完成（REQ-2026-002 已验收） |
+| T-2 | 批2 租户面：租户维护（M00.F01）+ 租户成员（M00.F02）+ 租户应用（M00.F05） | 开发 | claude | 大 | 已完成（REQ-2026-003 已验收） |
+| T-3 | 批3 权限与菜单：租户角色（M00.F03）+ 角色权限矩阵（M00.F04）+ 菜单管理（M04.F04） | 开发 | claude | 大 | 已完成（REQ-2026-004 已验收） |
+| T-4 | 批4 应用与用户关系网收尾：应用维护/启停（M04.F01、M04.F02）+ 角色成员/跨租户（M01.F02、M01.F03） | 开发 | claude | 中 | 已完成（REQ-2026-005 已验收） |
+| T-5 | 批5 contract-test 接入本仓 target + live 全绿收口（AC-1） | 开发 | claude | 中 | 已完成（REQ-2026-006 已验收） |
 
 ## 4. 功能影响（需求与功能对齐的唯一位置）
 
@@ -91,3 +91,15 @@ TypeSpec SSOT）定义的**全部业务面**实现到与家族既有后端（spr
 | contract-test 尚无 fastapi target | AC-1 | 批5 专项接入；接入前各批以本仓 L4 + AC-4 端点对照为过渡验收 | target 开关独立，不影响既有四后端断言 |
 | 体量大（13 功能）跨多会话 | 账本一致性 | 每批独立 /req + 独立验收 + session.json 交接 | 批次间互不阻塞，任一批可独立回退 |
 | 实现手改生成区抄近路 | 硬规则 §4 | 生成区 regen 先删后写 + 幂等门 strict（AC-3） | regen 即抹掉手改，漂移必红 |
+
+## 7. 验收记录（2026-09-30）
+
+| 验收项 | 结果 | 证据 |
+|---|---|---|
+| AC-1 live 全绿 | ✅ | contract-test 仓 `CONTRACT_TARGETS=springboot,fastapi TRACE_MAP=1 npx vitest run` 200/200（mode=live，live_floor {2,2,2}）；CT 30323a5+756bd0f 已推 |
+| AC-2 各批门禁 | ✅ | 批1-批5 各批 gate EXIT=0；批5 全量 72 passed（L0-L5） |
+| AC-3 幂等门 | ✅ | `check_codegen_idempotent.py --strict` 169 生成文件 PASS（suite 门禁常态） |
+| AC-4 端点对照 | ✅ | shared openapi 全 path ↔ 本仓 app.routes 一一对应（批1-批4 逐批核验 + AC-1 live 断言背书） |
+| AC-5 树终态 | ✅ | function-tree 3 模块 13 功能全部「已上线」（I07 / M00.F04.I01 为镜像 springboot 的契约豁免，保持规划） |
+
+人裁留账（不阻验收）：L5 软告警 98 条（49 项无设计映射 + 49 项无流程）；CT 仓 trace_env 4 target 未纳入 fastapi（升档人裁，live 验证走显式 shell env）。
