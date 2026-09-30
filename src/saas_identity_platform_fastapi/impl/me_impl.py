@@ -1,11 +1,13 @@
-"""M01.F01 whoami + M04.F04.I08 当前用户有效菜单（springboot MeController 镜像）。
+"""M01.F01 whoami + M01.F03 我的租户/切换 + M04.F04.I08 有效菜单（springboot MeController 镜像）。
 
-menus / tenants / switch-tenant 分批：menus 归批3（REQ-2026-001 T-3，本文件已实现）；
-tenants 与 switch-tenant 归批4（M01.F03，REQ-2026-001 T-4），保持未实现语义
-（500 NOT_IMPLEMENTED，家族错误形状）。
+menus 归批3（REQ-2026-001 T-3）、tenants 与 switch-tenant 归批4（REQ-2026-005），
+本文件三组均已实现；生成缝内已无未实现端点。
 """
 
 from __future__ import annotations
+
+import uuid
+from datetime import timedelta
 
 from sqlalchemy import select
 
@@ -13,18 +15,17 @@ from saas_identity_platform_fastapi.apis.me_api_base import BaseMeApi
 from saas_identity_platform_fastapi.entities import (
     SysMenu,
     SysUser,
+    Tenant,
     TenantMember,
     t_sys_role_menu,
     t_tenant_member_role,
 )
 from saas_identity_platform_fastapi.impl.assemble import to_membership
 from saas_identity_platform_fastapi.impl.context import get_context
-from saas_identity_platform_fastapi.impl.errors import (
-    InvalidCredentialsError,
-    NotImplementedYetError,
-)
+from saas_identity_platform_fastapi.impl.crud import uuid_or_bad_request
+from saas_identity_platform_fastapi.impl.errors import InvalidCredentialsError, NotFoundError
 from saas_identity_platform_fastapi.impl.menus_impl import menu_type_from_db
-from saas_identity_platform_fastapi.impl.security import require_bearer, uuid_or_none
+from saas_identity_platform_fastapi.impl.security import now_utc, require_bearer, uuid_or_none
 from saas_identity_platform_fastapi.models.current_user import CurrentUser
 from saas_identity_platform_fastapi.models.effective_menu_node import EffectiveMenuNode
 from saas_identity_platform_fastapi.models.switch_tenant_response import SwitchTenantResponse
@@ -143,9 +144,58 @@ class MeApiImpl(BaseMeApi):
 
     # 生成 router 以位置传参调用 Base 缝（apis/me_api.py），下划线前缀参数安全
     async def me_list_my_tenants(self, _client_id: str | None) -> list[TenantMembership]:
-        raise NotImplementedYetError("me/tenants 归批4（M01.F03，REQ-2026-001 T-4）")
+        """M01.F03.I01：当前用户全部租户成员关系（springboot membershipsOf :146-148 镜像）。
+
+        - 排序 created_at ASC + id ASC（TenantMemberRepository :30-31，固定序防首个漂移）
+        - 不过滤 status（四值全回）；query clientId 收但忽略（契约残留，参照同样忽略）
+        - roleIds 经 to_membership 全量 join、跨租户原样吐出（与 whoami 同一装配器）
+        """
+        ctx = get_context()
+        session = ctx.session
+        claims = require_bearer(ctx, ctx.request.app.state.jwt)
+        user_id = uuid_or_none(claims.get("sub"))
+        if user_id is None:
+            return []
+        members = (
+            session.query(TenantMember)
+            .filter_by(user_id=user_id)
+            .order_by(TenantMember.created_at, TenantMember.id)
+            .all()
+        )
+        return [to_membership(session, m) for m in members]
 
     async def me_switch_tenant(
         self, _tenant_id: str, _client_id: str | None
     ) -> SwitchTenantResponse:
-        raise NotImplementedYetError("switch-tenant 归批4（M01.F03，REQ-2026-001 T-4）")
+        """M01.F03.I02：切换当前租户（springboot MeController :111-143 镜像）。
+
+        校验链：无 sub → 401；坏 UUID → 400；租户不存在 → 404；成员资格门槛 =
+        **非 disabled**（status 非 0 且非 NULL，S5 口径：invited/suspended 可切），
+        不满足 → 404 "is not an active member"（不是 403）。签发新 access（tenant_id
+        claim=目标租户，旧 token 不失效）；refresh 纯构造**不落库**（参照
+        generateRefreshToken，rotate 语义归 /auth/refresh）；无 DB 写天然幂等。
+        响应镜像参照四字段：accessToken/refreshToken/expiresAt（now+TTL）/tenantId。
+        """
+        ctx = get_context()
+        session = ctx.session
+        claims = require_bearer(ctx, ctx.request.app.state.jwt)
+        user_id = uuid_or_none(claims.get("sub"))
+        if user_id is None:
+            raise InvalidCredentialsError("Bearer sub required for tenant switch")
+        tenant_id = uuid_or_bad_request(_tenant_id)
+        if session.get(Tenant, tenant_id) is None:
+            raise NotFoundError(f"tenant {tenant_id}")
+        members = session.query(TenantMember).filter_by(user_id=user_id).all()
+        if not any(
+            m.tenant_id == tenant_id and m.status is not None and m.status != 0 for m in members
+        ):
+            raise NotFoundError(f"user {user_id} is not an active member of tenant {tenant_id}")
+        issuer = ctx.request.app.state.jwt
+        # refresh 纯构造不落库，格式镜像 springboot generateRefreshToken（:146-152）
+        refresh = f"saas-rt-{user_id}-{int(now_utc().timestamp() * 1000)}-{uuid.uuid4()}"
+        return SwitchTenantResponse(
+            accessToken=issuer.issue_access_token(user_id, tenant_id),
+            refreshToken=refresh,
+            expiresAt=now_utc() + timedelta(seconds=issuer.ttl_seconds),  # 参照 :139
+            tenantId=tenant_id,
+        )

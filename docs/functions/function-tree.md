@@ -123,8 +123,17 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 |---|---|---|---|
 | M01.F01 | 用户维护 | 当前用户 whoami | 已上线 |
 | M01.F02 | 角色成员 | 给 member 分配角色（member→role binding；与 M00.F02 字段维护是不同维度） | 已上线 |
-| M01.F03 | 租户成员 | 当前用户的跨租户成员关系 + 切换 | 规划 |
+| M01.F03 | 租户成员 | 当前用户的跨租户成员关系 + 切换 | 已上线 |
 | M01.F04 | SSO 登录 | 密码登录 + 失败锁定 + OIDC + 登出 | 已上线 |
+
+### M01.F03 租户成员
+
+> 当前用户跨租户成员关系与租户切换。语义参照：springboot MeController（me/tenants + switch）。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M01.F03.I01 | 列出我的租户成员关系 | 查询 | 前端+后端 | created_at ASC + id ASC、不过滤 status、roleIds 跨租户原样吐出、query clientId 收但忽略（REQ-2026-005） | 已上线 |
+| M01.F03.I02 | 切换当前租户 | 接口 | 前端+后端 | 校验链 401/400/404；非 disabled 成员即可切（否则 404 not an active member）；新签 access 带 tenant_id claim、refresh 不落库、无 DB 写幂等（REQ-2026-005） | 已上线 |
 
 ### M01.F01 用户维护
 
@@ -158,10 +167,31 @@ FastAPI 后端 —— saas 家族第 5 种后端（springboot / aspnetcore / rai
 
 | 功能 ID | 功能名称 | 说明 | 状态 |
 |---|---|---|---|
-| M04.F01 | 应用维护 | 应用 CRUD + 公共元数据 | 规划 |
-| M04.F02 | 应用启用/停用 | `status` 字段切换 | 规划 |
+| M04.F01 | 应用维护 | 应用 CRUD + 公共元数据 | 已上线 |
+| M04.F02 | 应用启用/停用 | `status` 字段切换 | 已上线 |
 | M04.F03 | 身份认证 | OAuth authorize + token + refresh | 已上线 |
 | M04.F04 | 菜单管理 | 菜单 CRUD + 结构 + 当前用户菜单 | 已上线 |
+
+### M04.F01 应用维护
+
+> 平台应用（oauth_client）维护与公共元数据。语义参照：springboot AdminClientsController + ClientsController。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M04.F01.I01 | OAuth 应用列表 | 接口 | 前端+后端 | 仅有效 JWT（无角色门，镜像参照）；分页缺省 0/20、无排序无过滤（REQ-2026-005） | 已上线 |
+| M04.F01.I02 | 创建 OAuth 应用 | 接口 | 前端+后端 | validity 缺省或 ≤0 → 3600/86400（应用层口径，非 DB 列默认）、autoApprove 缺省 false、status=1、clientId 撞 unique → 400、返回 200（REQ-2026-005） | 已上线 |
+| M04.F01.I03 | OAuth 应用详情 | 接口 | 前端+后端 | findByClientId → 404；响应不含 clientSecret（DTO 无此字段，照参照实现修正原「回指纹」描述） | 已上线 |
+| M04.F01.I04 | 更新 OAuth 应用 | 接口 | 前端+后端 | PATCH 只应用 clientName/redirectUris/scopes 三字段（其余 DTO 字段忽略）、不 touch updatedAt | 已上线 |
+| M04.F01.I05 | 删除 OAuth 应用 | 接口 | 前端+后端 | 先 resolve → 404 非幂等；级联靠 DB FK ON DELETE CASCADE 清订阅/角色/菜单/token（应用层无吊销代码，照实修正原描述）；204 | 已上线 |
+| M04.F01.I06 | 公共 client 元数据 | 接口 | 前端+后端 | 匿名可读（permitAll 严格匹配 /api/v1/clients/*）；仅 clientId/clientName/status 三字段；未知 → 404 | 已上线 |
+
+### M04.F02 应用启用/停用
+
+> oauth_client.status 字段切换。语义参照：springboot AdminClientsController set-status。
+
+| 子项 ID | 名称 | 类型 | 交付 | 说明 | 状态 |
+|---|---|---|---|---|---|
+| M04.F02.I01 | 启用/停用应用 | 接口 | 前端+后端 | status 必填、无值域校验任意 int 直写 smallint（镜像参照）；未知 client → 404；200 回更新后应用 | 已上线 |
 
 ### M04.F03 身份认证
 
