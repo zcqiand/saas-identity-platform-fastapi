@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from uuid import UUID
 
 from sqlalchemy import select
 
@@ -70,7 +71,9 @@ class MeApiImpl(BaseMeApi):
         - 任何一环为空 → 空 Map；无 sub claim → 空 Map（:183-185 分支镜像）
         - 根判定：parent（零值 UUID 或孤儿——parent 不在授权集合）→ 当 root
         - 只排根层（sortOrder 升序），children 保持装载序（参照 :307-311）
-        - 契约 EffectiveMenuNode.parentId 必填 UUID：零值/孤儿 parent 原样回显（不产 null）
+        - 根 sentinel（parent_id 零值 UUID）→ parentId null（参照 :273-276 四后端实测口径；
+          契约 requiredMode=REQUIRED 是滞后声明，live 比对 normalize 全等为准，REQ-2026-006）；
+          孤儿（parent 非零且不在授权集合）parentId 原样回显仍当 root（:291-298 镜像）
         """
         ctx = get_context()
         session = ctx.session
@@ -113,22 +116,26 @@ class MeApiImpl(BaseMeApi):
             grouped.setdefault(menu.client_id, []).append(menu)
 
         def _build(rows: list[SysMenu]) -> list[EffectiveMenuNode]:
-            nodes = {
-                row.id: EffectiveMenuNode(
+            zero_uuid = UUID(int=0)
+
+            def _node(row: SysMenu) -> EffectiveMenuNode:
+                # 契约 parent_id 声明必填 UUID，参照实测序列化 null——构造器会拒 None，
+                # 走 model_construct 绕开校验层（生成区禁改，响应序列化 parent_id: null）
+                return EffectiveMenuNode.model_construct(
                     id=row.id,
-                    clientId=row.client_id,
-                    parentId=row.parent_id,
+                    client_id=row.client_id,
+                    parent_id=None if row.parent_id == zero_uuid else row.parent_id,
                     title=row.title,
                     type=menu_type_from_db(row.type),
                     path=row.path,
                     component=row.component,
                     perms=row.perms,
                     icon=row.icon,
-                    sortOrder=row.sort_order,
+                    sort_order=row.sort_order,
                     children=[],
                 )
-                for row in rows
-            }
+
+            nodes = {row.id: _node(row) for row in rows}
             roots: list[EffectiveMenuNode] = []
             for row in rows:
                 node = nodes[row.id]

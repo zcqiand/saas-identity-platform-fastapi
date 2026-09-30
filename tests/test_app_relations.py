@@ -108,9 +108,11 @@ def test_admin_clients_create_defaults_and_dup_400(client: TestClient) -> None:
     dup = client.post(ADMIN, headers=headers, json=_new_client_payload("batch4-app"))
     assert dup.status_code == 400, dup.text
     assert "constraint violation" in dup.json()["message"]
-    # 契约必填字段缺失 → 422（springboot @Valid→400 的校验层差异，§4 以契约为准）
+    # 契约必填字段缺失 → 400 BAD_REQUEST（组合根把校验层 422 收口成家族契约 400，
+    # REQ-2026-006 批5 live 比对实裁：CT 5.82 统一 400）
     missing = client.post(ADMIN, headers=headers, json={"clientId": "x"})
-    assert missing.status_code == 422, missing.text
+    assert missing.status_code == 400, missing.text
+    assert missing.json()["code"] == "BAD_REQUEST"
 
 
 @pytest.mark.fn("M04.F01.I03")
@@ -229,7 +231,7 @@ def test_admin_clients_set_status_no_range_check(client: TestClient) -> None:
     unknown = client.patch(f"{ADMIN}/no-such-app/status", headers=headers, json={"status": 1})
     assert unknown.status_code == 404, unknown.text
     missing = client.patch(f"{ADMIN}/{SECOND_CLIENT_ID}/status", headers=headers, json={})
-    assert missing.status_code == 422, missing.text  # 契约 status 必填
+    assert missing.status_code == 400, missing.text  # 契约 status 必填（422 收口 400，批5）
 
 
 # ---------------------------------------------------------------- M01.F03 我的租户与切换

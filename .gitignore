@@ -17,3 +17,9 @@ __pycache__/
 
 # codegen 中间产物（gen-shared.sh 工作目录，不入库）
 .openapi-tmp/
+
+# dev 栈本地运行面（家族真值 secret + DATABASE_URL；镜像其他后端仓，REQ-2026-006）
+.env.local
+
+# 本地起 server 的运行日志（nohup 重定向，含探针产物不入库）
+.runtime-logs/

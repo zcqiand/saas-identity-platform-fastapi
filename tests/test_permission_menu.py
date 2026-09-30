@@ -306,12 +306,13 @@ def test_client_menus_list_flat_and_auth(client: TestClient) -> None:
 @pytest.mark.fn("M04.F04.I02")
 def test_client_menus_create_defaults(client: TestClient) -> None:
     headers = _bearer(client)
-    # 生成契约 CreateSysMenuRequest.type 必填（springboot DTO 容 null 的差异点——
-    # 本仓 API 面以生成契约为准，缺 type → 422）
+    # 生成契约 CreateSysMenuRequest.type 必填（springboot DTO 容 null 的差异点）——
+    # 校验层 422 由组合根收口成家族契约 400 BAD_REQUEST（REQ-2026-006 批5 live 实裁）
     missing_type = client.post(
         f"/api/v1/clients/{CLIENT_ID}/menus", headers=headers, json={"title": "新建"}
     )
-    assert missing_type.status_code == 422, missing_type.text
+    assert missing_type.status_code == 400, missing_type.text
+    assert missing_type.json()["code"] == "BAD_REQUEST"
     resp = client.post(
         f"/api/v1/clients/{CLIENT_ID}/menus",
         headers=headers,
@@ -488,6 +489,9 @@ def test_me_menus_tree_grouping_orphan_and_order(client: TestClient) -> None:
     assert [node["title"] for node in tree] == ["仪表盘", "权限管理", "孤儿菜单"]
     dash, directory, orphan = tree
     assert dash["children"] == []
+    # 根 sentinel：parent_id 零值 UUID → parentId null（参照 MeController:273 四后端实测，
+    # REQ-2026-006 批5 live 实裁；契约 requiredMode=REQUIRED 为滞后声明）
+    assert dash["parentId"] is None
     assert [c["title"] for c in directory["children"]] == ["用户列表"]
     users = directory["children"][0]
     assert users["parentId"] == str(MENU_DIR)

@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Union, get_args, get_origin
 
 from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import Strict
 from sqlalchemy import create_engine
@@ -121,6 +122,12 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
     app.state.session_factory = sessionmaker(bind=db_engine, expire_on_commit=False)
     app.state.jwt = JwtIssuer(config)
 
+    # 家族健康探针（contract-test fnReporter healthcheck 目标；rails health#show 镜像）。
+    # 基建端点不入功能树（rails 先例），匿名 200 纯探针、无 body、不泄运行面信息。
+    @app.get("/health", include_in_schema=False)
+    async def _health() -> Response:
+        return Response(status_code=200)
+
     @app.middleware("http")
     async def _request_context(
         request: Request[State], call_next: Callable[[Request[State]], Awaitable[Response]]
@@ -161,6 +168,20 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
         # 家族 ErrorResponse 形状 {code,message}（springboot GlobalExceptionHandler 镜像）
         return JSONResponse(
             status_code=exc.status_code, content={"code": exc.code, "message": exc.message}
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(
+        _request: Request[State], exc: RequestValidationError
+    ) -> JSONResponse:
+        # 契约必填/类型不符：fastapi 校验层默认 422 {detail:[…]}，但家族契约面统一
+        # springboot @Valid 口径 400 BAD_REQUEST {code,message}（CT live 比对 5.82 收严，
+        # REQ-2026-006 批5 实测 4 处红全此根因）。message 取首违字段「field: msg」。
+        first = exc.errors()[0]
+        field = ".".join(str(p) for p in first.get("loc", ()) if p not in ("body", "query", "path"))
+        return JSONResponse(
+            status_code=400,
+            content={"code": "BAD_REQUEST", "message": f"{field}: {first.get('msg', '')}"},
         )
 
     @app.exception_handler(LockedAccountError)
