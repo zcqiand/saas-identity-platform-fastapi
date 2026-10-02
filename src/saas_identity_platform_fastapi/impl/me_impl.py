@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -88,23 +89,27 @@ class MeApiImpl(BaseMeApi):
         )
         if not member_ids:
             return {}
-        role_ids = (
+        # core Table 列经 .scalars().all() 泛型退化为 Sequence[Never]（sqlalchemy 2.1
+        # + mypy strict）——列类型实为 UUID，cast 显式声明（CI mypy 1.20.2 修复批）
+        role_ids = cast(
+            "list[uuid.UUID]",
             session.execute(
                 select(t_tenant_member_role.c.role_id).where(
                     t_tenant_member_role.c.member_id.in_(member_ids)
                 )
             )
             .scalars()
-            .all()
+            .all(),
         )
         if not role_ids:
             return {}
-        menu_ids = (
+        menu_ids = cast(
+            "list[uuid.UUID]",
             session.execute(
                 select(t_sys_role_menu.c.menu_id).where(t_sys_role_menu.c.role_id.in_(role_ids))
             )
             .scalars()
-            .all()
+            .all(),
         )
         if not menu_ids:
             return {}

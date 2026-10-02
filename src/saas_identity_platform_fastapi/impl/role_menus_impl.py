@@ -93,7 +93,7 @@ class TenantRoleMenusApiImpl(BaseTenantRoleMenusApi):
                     t_sys_role_menu.c.menu_id.not_in(kept),
                 )
             )
-            existing = set(
+            existing: set[uuid.UUID] = set(
                 session.execute(
                     select(t_sys_role_menu.c.menu_id).where(t_sys_role_menu.c.role_id == role.id)
                 )
