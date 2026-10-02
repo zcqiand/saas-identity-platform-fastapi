@@ -4,6 +4,9 @@ name: ci
 # 家族原则（镜像 rails/springboot ci.yml 注释）：CI=静态三件 + 组合根装配冒烟；
 # gate=全量（含 L4 真测试与 codegen 幂等 strict）。L4 首批测试落地后按需扩 CI。
 # ruff==0.15.21 与 suite gate.py RUFF_PINNED_VERSION 同版钉定——升版必须双处同步。
+# mypy==1.20.2（2026-10-02 CI 三连红修复）：1.8.0 不认识 sqlalchemy 2.1.x 源码内嵌
+# disable-error-code="untyped-decorator"（该码 1.9 引入）——CI 一体环境拉到 2.1.1 即炸
+# （全在 site-packages）；本地 anaconda 全局同版保持一致。升版先复现验证再双仓同步。
 # codegen 产物不在 CI 重放（openapi-generator/sqlacodegen 本地跑，产物 committed；
 # 幂等由 suite scripts/checks/check_codegen_idempotent.py --strict 收口）。
 on:
@@ -24,7 +27,7 @@ jobs:
       - name: 安装依赖（runtime + dev；ruff/mypy 钉 suite 全局版本）
         run: |
           pip install -e ".[dev]"
-          pip install ruff==0.15.21 mypy==1.8.0
+          pip install ruff==0.15.21 mypy==1.20.2
       - name: L1 格式（ruff format --check）
         run: ruff format --check src tests
       - name: L2 静态检查（ruff check）
