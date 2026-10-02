@@ -10,6 +10,11 @@ dependencies = [
     "pyjwt==2.10.1",
     # 密码校验（bcrypt，家族 `plain:` 前缀约定的回退分支；REQ-2026-002 批1）
     "bcrypt==4.3.0",
+    # ORM + PG 驱动：运行时依赖，必须随 Docker 镜像（镜像只装主依赖）。2026-10-02
+    # prod 首航事故：sqlalchemy 此前只经 dev 组 sqlacodegen 传递带入，容器 import
+    # app 即 ModuleNotFoundError；psycopg2 靠 Dockerfile build 补丁——一并归位主依赖。
+    "sqlalchemy>=2.1",
+    "psycopg2-binary>=2.9",
 ]
 
 [project.optional-dependencies]
@@ -19,7 +24,7 @@ dev = [
     # ruff/mypy 故意不在依赖里 —— suite 钉版全局工具链（gate.py RUFF_PINNED_VERSION），
     # 项目装新版会在 venv 遮蔽钉版触发 [RUFF-PIN] exit 2（2026-09-29 实测）
     "sqlacodegen==4.0.4",
-    "psycopg2-binary>=2.9",
+    # sqlalchemy/psycopg2 已升主依赖（2026-10-02 首航事故），dev 组不再重复声明
 ]
 
 [tool.ruff]
