@@ -5,7 +5,7 @@
 | 提出人 | 用户 |
 | 提出日期 | 2026-10-02 |
 | 优先级 | P2 |
-| 状态 | 待评审 |
+| 状态 | 开发中 |
 | 关联 ADR | ADR-0027（消费树 ⊆ BASE subset invariant，本需求据以不登记功能树，见 §4） |
 
 ## 1. 需求描述
@@ -50,8 +50,8 @@
 
 | 任务 ID | 任务描述 | 类型 | 负责人 | 预估 | 状态 |
 |---|---|---|---|---|---|
-| T-1 | 根路径跳转：`@app.get("/", include_in_schema=False)` → `RedirectResponse("/docs")`（匿名） | 开发 | 待定 | XS | 待开始 |
-| T-2 | L1-L4 门禁回归 + curl 三验（307、跟随 200、/api/v1/* 不回归） | 门禁 | 待定 | XS | 待开始 |
+| T-1 | 根路径跳转：`@app.get("/", include_in_schema=False)` → `RedirectResponse("/docs")`（匿名） | 开发 | claude | XS | 已完成（2026-10-02，red→green：改前 GET / 404，改后 307 Location /docs；tests/test_root_redirect.py 三断言 3 passed，不挂 fn ID） |
+| T-2 | L1-L4 门禁回归 + curl 三验（307、跟随 200、/api/v1/* 不回归） | 门禁 | claude | XS | 已完成（2026-10-02，L0-L4 全绿 75 passed/20:30 含新 3 断言；curl 三验：GET / 307 Location /docs、跟随 200 渲染「SaaS 多租户多应用身份平台 - Swagger UI」、/openapi.json 200 且 root 不落 paths、/api/v1/me 裸 401 契约面不回归） |
 
 ## 4. 功能影响（需求与功能对齐的唯一位置）
 
