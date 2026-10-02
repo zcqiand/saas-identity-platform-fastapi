@@ -13,6 +13,7 @@
 | REQ-2026-005 | 批4 应用与用户关系网收尾 | P0 | 已验收 | 3 |
 | REQ-2026-006 | 批5 contract-test live 接入 | P0 | 已验收 | 0 |
 | REQ-2026-007 | 后端根路径默认跳转 Swagger | P2 | 开发中 | 0 |
+| REQ-2026-008 | fastapi 部署链建设（Dockerfile + deploy 三件套 + CI deploy job） | P1 | 开发中 | 0 |
 
 ## 方向定死
 
