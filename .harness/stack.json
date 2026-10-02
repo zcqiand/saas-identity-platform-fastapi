@@ -37,7 +37,7 @@
     "L4": {
       "name": "测试",
       "cmd": [
-        "python",
+        ".venv\\Scripts\\python.exe",
         "-m",
         "pytest",
         "-q",
@@ -47,7 +47,7 @@
     }
   },
   "trace_cmd": [
-    "python",
+    ".venv\\Scripts\\python.exe",
     "-m",
     "pytest",
     "--collect-only",
