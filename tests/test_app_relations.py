@@ -74,7 +74,6 @@ def test_admin_clients_list_pagination_defaults(client: TestClient) -> None:
         "clientName",
         "grantTypes",
         "redirectUris",
-        "scopes",
         "accessTokenValidity",
         "refreshTokenValidity",
         "autoApprove",
@@ -82,6 +81,8 @@ def test_admin_clients_list_pagination_defaults(client: TestClient) -> None:
         "createdAt",
         "updatedAt",
     }
+    # 种子 client scopes 为 null → NON_NULL 镜像下不落 JSON（2026-10-03 裁定向家族对齐）
+    assert "scopes" not in body["items"][0]
     page1 = client.get(ADMIN, headers=headers, params={"page": 1, "pageSize": 1})
     assert page1.status_code == 200, page1.text
     assert len(page1.json()["items"]) == 1  # 分页裁剪

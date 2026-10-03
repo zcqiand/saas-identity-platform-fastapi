@@ -73,12 +73,13 @@ def test_roles_list_asc_order_and_clientid_param_ignored(client: TestClient) -> 
         "clientId",
         "roleCode",
         "roleName",
-        "description",
         "isPreset",
         "status",
         "createdAt",
         "updatedAt",
     }
+    # 种子角色 description 为 null → NON_NULL 镜像下不落 JSON（2026-10-03 裁定向家族对齐）
+    assert "description" not in one
     # query clientId 被接收但完全不过滤（springboot 参照：只按 path tenantId 过滤）
     filtered = client.get(
         f"{ROLES}/{T1}/roles", headers=headers, params={"clientId": SECOND_CLIENT_ID}
@@ -490,9 +491,10 @@ def test_me_menus_tree_grouping_orphan_and_order(client: TestClient) -> None:
     assert [node["title"] for node in tree] == ["仪表盘", "权限管理", "孤儿菜单"]
     dash, directory, orphan = tree
     assert dash["children"] == []
-    # 根 sentinel：parent_id 零值 UUID → parentId null（参照 MeController:273 四后端实测，
-    # REQ-2026-006 批5 live 实裁；契约 requiredMode=REQUIRED 为滞后声明）
-    assert dash["parentId"] is None
+    # 根 sentinel：parent_id 零值 UUID → parentId null，NON_NULL 镜像下键不落
+    # （参照 MeController:273 四后端实测 null + springboot 逐 DTO NON_NULL；
+    # 契约 requiredMode=REQUIRED 为滞后声明，2026-10-03 裁定向家族对齐）
+    assert "parentId" not in dash
     assert [c["title"] for c in directory["children"]] == ["用户列表"]
     users = directory["children"][0]
     assert users["parentId"] == str(MENU_DIR)

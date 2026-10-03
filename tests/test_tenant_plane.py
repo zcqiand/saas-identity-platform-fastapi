@@ -453,8 +453,9 @@ def test_tenant_applications_list(client: TestClient) -> None:
     assert app["clientId"] == CLIENT_ID
     assert app["tenantId"] == T1
     assert app["status"] == 1
-    assert app["expireTime"] is None
-    assert set(app) == {"id", "tenantId", "clientId", "status", "expireTime", "createdAt"}
+    # null 不落 JSON（NON_NULL 镜像，2026-10-03 裁定向家族对齐）
+    assert "expireTime" not in app
+    assert set(app) == {"id", "tenantId", "clientId", "status", "createdAt"}
 
 
 @pytest.mark.fn("M00.F05.I02")
