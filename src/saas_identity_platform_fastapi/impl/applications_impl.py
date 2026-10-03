@@ -21,7 +21,7 @@ from saas_identity_platform_fastapi.apis.tenant_applications_api_base import (
 from saas_identity_platform_fastapi.entities import OauthClient, TenantApplication
 from saas_identity_platform_fastapi.impl.context import get_context
 from saas_identity_platform_fastapi.impl.crud import commit_or_bad_request, page_window
-from saas_identity_platform_fastapi.impl.errors import NotFoundError
+from saas_identity_platform_fastapi.impl.errors import BadRequestError, NotFoundError
 from saas_identity_platform_fastapi.impl.security import as_utc, now_utc, verify_path_tenant
 from saas_identity_platform_fastapi.models.subscribe_tenant_application_request import (
     SubscribeTenantApplicationRequest,
@@ -79,17 +79,30 @@ class TenantApplicationsApiImpl(BaseTenantApplicationsApi):
         known = session.query(OauthClient).filter_by(client_id=req.client_id).one_or_none()
         if known is None:
             raise NotFoundError(f"unknown clientId: {req.client_id}")
+        # 2026-10-03 修复（CT 断言同批）：dup 预检——此前盲插撞 unique →
+        # commit_or_bad_request 把驱动诊断整段上 wire（裸 DB 泄漏）。
+        dup = (
+            session.query(TenantApplication)
+            .filter_by(tenant_id=tenant_id, client_id=req.client_id)
+            .one_or_none()
+        )
+        if dup is not None:
+            raise BadRequestError(
+                f"subscription already exists: tenant={tenantId} client={req.client_id}"
+            )
         row = TenantApplication(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             client_id=req.client_id,
             status=1,
-            # 请求 expireTime 不落库（springboot subscribe 只写 status/created_at）→ 恒 null
-            expire_time=None,
+            # 2026-10-03 修复（镜像追平 springboot 01704a2）：契约 expireTime? 语义，
+            # 参照已落库，此前硬编码 None 是对旧 springboot 行为的镜像，已陈旧。
+            expire_time=req.expire_time,
             created_at=now_utc(),
         )
         session.add(row)
-        # 重复订阅撞 (tenant_id, client_id) unique → 400
+        # 兜底（预检后仍撞并发 unique 等）：驱动诊断不再直上 wire 的语义由预检保证，
+        # commit_or_bad_request 保留给真 FK/并发面。
         commit_or_bad_request(session, "tenant_application subscribe")
         return _app_dto(row)
 

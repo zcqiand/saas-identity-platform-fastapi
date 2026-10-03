@@ -469,7 +469,8 @@ def test_subscribe_unknown_client_404_duplicate_400(client: TestClient) -> None:
     )
     assert unknown.status_code == 404, unknown.text
     assert unknown.json()["code"] == "NOT_FOUND"
-    # 正常订阅（expireTime 请求可带，但 springboot 参照不落库 → 响应 null）
+    # 正常订阅：expireTime 落库回读（2026-10-03 镜像追平 springboot 01704a2——参照已落库，
+    # 旧断言「不落库」是对修复前行为的镜像，随本批翻转；CT I75 同批强化）
     ok = client.post(
         f"/api/v1/tenants/{T1}/applications",
         headers=headers,
@@ -478,10 +479,8 @@ def test_subscribe_unknown_client_404_duplicate_400(client: TestClient) -> None:
     assert ok.status_code == 200, ok.text
     assert ok.json()["clientId"] == SECOND_CLIENT_ID
     assert ok.json()["status"] == 1
-    assert (
-        "expireTime" not in ok.json()
-    )  # null 不落 JSON（NON_NULL 镜像，2026-10-03 裁定向家族对齐）
-    # 重复订阅 → 400 constraint violation（无 409）
+    assert ok.json()["expireTime"].startswith("2027-01-01")
+    # 重复订阅 → 400（2026-10-03 dup 预检 clean message；nextjs 409 先例分叉待人裁）
     dup = client.post(
         f"/api/v1/tenants/{T1}/applications",
         headers=headers,
