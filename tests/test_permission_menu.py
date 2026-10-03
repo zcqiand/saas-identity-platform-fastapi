@@ -491,10 +491,11 @@ def test_me_menus_tree_grouping_orphan_and_order(client: TestClient) -> None:
     assert [node["title"] for node in tree] == ["仪表盘", "权限管理", "孤儿菜单"]
     dash, directory, orphan = tree
     assert dash["children"] == []
-    # 根 sentinel：parent_id 零值 UUID → parentId null，NON_NULL 镜像下键不落
-    # （参照 MeController:273 四后端实测 null + springboot 逐 DTO NON_NULL；
-    # 契约 requiredMode=REQUIRED 为滞后声明，2026-10-03 裁定向家族对齐）
-    assert "parentId" not in dash
+    # 根 sentinel：parent_id 零值 UUID → parentId null（参照 MeController:273 四后端实测，
+    # REQ-2026-006 批5 live 实裁；契约 requiredMode=REQUIRED 为滞后声明）。
+    # 本路由豁免 exclude_none：EffectiveMenuNode.parentId 是 springboot 全家族唯一
+    # 故意保留 null 的响应字段（无 @Nullable 无 NON_NULL 注解），null 键必须在 wire。
+    assert dash["parentId"] is None
     assert [c["title"] for c in directory["children"]] == ["用户列表"]
     users = directory["children"][0]
     assert users["parentId"] == str(MENU_DIR)

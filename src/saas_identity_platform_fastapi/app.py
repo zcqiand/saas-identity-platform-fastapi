@@ -192,12 +192,18 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
 
     for router in _ROUTERS:
         _relax_strict_query_ints(router)
-        # 家族 DTO 序列化形状：springboot 逐 DTO @JsonInclude(NON_NULL) 镜像——
+        # 家族 DTO 序列化形状：springboot 逐字段 @JsonInclude(NON_NULL) 镜像——
         # null 可选字段不落 JSON（lab 仓同款先挂；2026-10-03 用户裁定向家族对齐）。
         # include 复制路由时读 route 属性固化进 handler 闭包（include_router
         # 本身不收 exclude_none 参数；生成区零改动，挂属性即全局生效）。
+        # 唯一例外（2026-10-03 wire 实证）：EffectiveMenuNode.parentId 是 springboot
+        # 全家族唯一无 @Nullable、无 NON_NULL 注解、由 MeController 运行时置 null 的
+        # 根 sentinel 字段（REQ-2026-006 批5 四后端实测裁决「parentId:null 键在」）——
+        # 粗放 exclude_none 会砍掉这条已裁决形状，故 /me/menus 单路由豁免。
         for route in router.routes:
             if isinstance(route, APIRoute):
+                if route.path == "/api/v1/me/menus":
+                    continue
                 route.response_model_exclude_none = True
         app.include_router(router)
 
