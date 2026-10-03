@@ -113,7 +113,8 @@ def test_roles_create_defaults_and_conflicts(client: TestClient) -> None:
     body = resp.json()
     assert body["roleCode"] == "editor" and body["status"] == 1
     assert body["isPreset"] is False  # isPreset 缺省 false
-    assert body["tenantId"] == T1 and body["description"] is None
+    assert body["tenantId"] == T1
+    assert "description" not in body  # null 不落 JSON（NON_NULL 镜像，2026-10-03 裁定向家族对齐）
     explicit = client.post(
         f"{ROLES}/{T1}/roles",
         headers=headers,

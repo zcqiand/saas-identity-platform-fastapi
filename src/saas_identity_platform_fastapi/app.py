@@ -15,6 +15,7 @@ from typing import Union, get_args, get_origin
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.routing import APIRoute
 from pydantic import Strict
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -191,6 +192,13 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
 
     for router in _ROUTERS:
         _relax_strict_query_ints(router)
+        # 家族 DTO 序列化形状：springboot 逐 DTO @JsonInclude(NON_NULL) 镜像——
+        # null 可选字段不落 JSON（lab 仓同款先挂；2026-10-03 用户裁定向家族对齐）。
+        # include 复制路由时读 route 属性固化进 handler 闭包（include_router
+        # 本身不收 exclude_none 参数；生成区零改动，挂属性即全局生效）。
+        for route in router.routes:
+            if isinstance(route, APIRoute):
+                route.response_model_exclude_none = True
         app.include_router(router)
 
     # 基建：根路径默认跳转 Swagger UI（REQ-2026-007 T-1；/health 同类基建端点，
