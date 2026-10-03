@@ -477,7 +477,9 @@ def test_subscribe_unknown_client_404_duplicate_400(client: TestClient) -> None:
     assert ok.status_code == 200, ok.text
     assert ok.json()["clientId"] == SECOND_CLIENT_ID
     assert ok.json()["status"] == 1
-    assert "expireTime" not in ok.json()  # null 不落 JSON（NON_NULL 镜像，2026-10-03 裁定向家族对齐）
+    assert (
+        "expireTime" not in ok.json()
+    )  # null 不落 JSON（NON_NULL 镜像，2026-10-03 裁定向家族对齐）
     # 重复订阅 → 400 constraint violation（无 409）
     dup = client.post(
         f"/api/v1/tenants/{T1}/applications",
