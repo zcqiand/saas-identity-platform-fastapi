@@ -23,3 +23,10 @@ __pycache__/
 
 # 本地起 server 的运行日志（nohup 重定向，含探针产物不入库）
 .runtime-logs/
+
+# 2026-10-04 补齐：env 泄漏纪律 + .state 探针产物/gate.json/trace.json 不入库（对齐各仓 canonical 集合）
+.env
+.env.*.local
+.state/probe-*.json
+.state/gate.json
+.state/trace.json
