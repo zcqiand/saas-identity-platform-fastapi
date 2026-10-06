@@ -55,6 +55,8 @@ if [ ! -f "$BASE/fastapi.env" ]; then
       printf 'JWT_ISSUER=saas-identity-platform\n'
       printf 'JWT_AUDIENCE=saas-identity-platform-clients\n'
       printf 'JWT_TTL_SECONDS=3600\n'
+      # CORS 白名单（springboot deploy 同形：SPA + saas-nextjs + 本仓域名）
+      printf 'SAAS_CORS_ALLOWED_ORIGINS=https://%s,https://saas-vue.xiangru.uk,https://saas-react.xiangru.uk,https://saas-nextjs.xiangru.uk\n' "$NGINX_DOMAIN"
     } > "$BASE/fastapi.env"
     chown deploy:deploy "$BASE/fastapi.env" 2>/dev/null || true
     chmod 600 "$BASE/fastapi.env"
@@ -138,6 +140,7 @@ if [ -f "$BASE/fastapi.env" ]; then
   append_if_missing JWT_ISSUER 'saas-identity-platform'
   append_if_missing JWT_AUDIENCE 'saas-identity-platform-clients'
   append_if_missing JWT_TTL_SECONDS '3600'
+  append_if_missing SAAS_CORS_ALLOWED_ORIGINS "https://${NGINX_DOMAIN},https://saas-vue.xiangru.uk,https://saas-react.xiangru.uk,https://saas-nextjs.xiangru.uk"
   if ! grep -q '^JWT_SIGNING_KEY=..*' "$BASE/fastapi.env"; then
     echo "→ append JWT_SIGNING_KEY (random, persisted) to existing $BASE/fastapi.env"
     umask 077

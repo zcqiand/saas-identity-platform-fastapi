@@ -31,6 +31,12 @@ class AppConfig:
     jwt_issuer: str
     jwt_audience: str
     jwt_ttl_seconds: int
+    cors_allowed_origins: str
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """CSV 白名单 → 列表（lab config.cors_origins 镜像，family env 同名 key）。"""
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     @classmethod
     def from_env(cls) -> AppConfig:
@@ -40,4 +46,5 @@ class AppConfig:
             jwt_issuer=_require_env("JWT_ISSUER"),
             jwt_audience=_require_env("JWT_AUDIENCE"),
             jwt_ttl_seconds=int(_require_env("JWT_TTL_SECONDS")),
+            cors_allowed_origins=_require_env("SAAS_CORS_ALLOWED_ORIGINS"),
         )

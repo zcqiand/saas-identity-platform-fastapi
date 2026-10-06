@@ -396,6 +396,10 @@ def client(scratch_engine: Engine) -> Iterator[TestClient]:
         jwt_issuer=_JWT_ISSUER,
         jwt_audience=_JWT_AUDIENCE,
         jwt_ttl_seconds=3600,
+        cors_allowed_origins=(
+            "http://localhost:5101,http://localhost:5102,"
+            "http://localhost:5103,http://localhost:5108"
+        ),
     )
     _truncate_all(scratch_engine)
     _seed(scratch_engine)

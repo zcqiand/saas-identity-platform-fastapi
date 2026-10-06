@@ -14,6 +14,7 @@ from typing import Union, get_args, get_origin
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import Strict
@@ -122,6 +123,16 @@ def create_app(config: AppConfig, engine: Engine | None = None) -> FastAPI:
     app.state.engine = db_engine
     app.state.session_factory = sessionmaker(bind=db_engine, expire_on_commit=False)
     app.state.jwt = JwtIssuer(config)
+
+    # CORS 白名单（lab app.py 镜像 aspnetcore/springboot 同名策略；REQ-2026-002 Phase 2）：
+    # 显式 origin（非 *）+ credentials —— 前端直连后端（saas-flutter dev 5108）要求回显
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # 家族健康探针（contract-test fnReporter healthcheck 目标；rails health#show 镜像）。
     # 基建端点不入功能树（rails 先例），匿名 200 纯探针、无 body、不泄运行面信息。
