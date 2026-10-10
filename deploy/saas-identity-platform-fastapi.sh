@@ -56,7 +56,7 @@ if [ ! -f "$BASE/fastapi.env" ]; then
       printf 'JWT_AUDIENCE=saas-identity-platform-clients\n'
       printf 'JWT_TTL_SECONDS=3600\n'
       # CORS 白名单（springboot deploy 同形：SPA + saas-nextjs + 本仓域名）
-      printf 'SAAS_CORS_ALLOWED_ORIGINS=https://%s,https://saas-vue.xiangru.uk,https://saas-react.xiangru.uk,https://saas-nextjs.xiangru.uk\n' "$NGINX_DOMAIN"
+      printf 'SAAS_CORS_ALLOWED_ORIGINS=https://%s,https://saas-vue.xiangru.uk,https://saas-react.xiangru.uk,https://saas-nextjs.xiangru.uk,https://saas-flutter.xiangru.uk\n' "$NGINX_DOMAIN"
     } > "$BASE/fastapi.env"
     chown deploy:deploy "$BASE/fastapi.env" 2>/dev/null || true
     chmod 600 "$BASE/fastapi.env"
@@ -140,7 +140,19 @@ if [ -f "$BASE/fastapi.env" ]; then
   append_if_missing JWT_ISSUER 'saas-identity-platform'
   append_if_missing JWT_AUDIENCE 'saas-identity-platform-clients'
   append_if_missing JWT_TTL_SECONDS '3600'
-  append_if_missing SAAS_CORS_ALLOWED_ORIGINS "https://${NGINX_DOMAIN},https://saas-vue.xiangru.uk,https://saas-react.xiangru.uk,https://saas-nextjs.xiangru.uk"
+  append_if_missing SAAS_CORS_ALLOWED_ORIGINS "https://${NGINX_DOMAIN},https://saas-vue.xiangru.uk,https://saas-react.xiangru.uk,https://saas-nextjs.xiangru.uk,https://saas-flutter.xiangru.uk"
+  # origin 级无损追加（家族同款，rails 仓同款）：四前端（vue/react/nextjs/flutter）+ 本域
+  # 都可跨源调本后端，存量 env-file 缺哪个 origin 就补哪个（不整值覆盖，运维手工 origin 保留）。
+  for cors_origin in "https://${NGINX_DOMAIN}" \
+                     "https://saas-nextjs.xiangru.uk" \
+                     "https://saas-react.xiangru.uk" \
+                     "https://saas-vue.xiangru.uk" \
+                     "https://saas-flutter.xiangru.uk"; do
+    if grep -q '^SAAS_CORS_ALLOWED_ORIGINS=' "$BASE/fastapi.env" && ! grep '^SAAS_CORS_ALLOWED_ORIGINS=' "$BASE/fastapi.env" | grep -qF "$cors_origin"; then
+      sed -i "s#^\(SAAS_CORS_ALLOWED_ORIGINS=.*\)#\1,${cors_origin}#" "$BASE/fastapi.env"
+      echo "→ reconcile SAAS_CORS_ALLOWED_ORIGINS: 追加缺失 origin ${cors_origin}（origin 级，不整值覆盖）"
+    fi
+  done
   if ! grep -q '^JWT_SIGNING_KEY=..*' "$BASE/fastapi.env"; then
     echo "→ append JWT_SIGNING_KEY (random, persisted) to existing $BASE/fastapi.env"
     umask 077
