@@ -35,7 +35,7 @@ class EffectiveMenuNode(BaseModel):
     """ # noqa: E501
     id: UUID
     client_id: StrictStr = Field(alias="clientId")
-    parent_id: UUID = Field(alias="parentId")
+    parent_id: Optional[UUID] = Field(alias="parentId")
     title: StrictStr
     type: SysMenuType
     path: Optional[StrictStr] = None
@@ -90,6 +90,11 @@ class EffectiveMenuNode(BaseModel):
                 if _item:
                     _items.append(_item.to_dict())
             _dict['children'] = _items
+        # set to None if parent_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.parent_id is None and "parent_id" in self.model_fields_set:
+            _dict['parentId'] = None
+
         return _dict
 
     @classmethod

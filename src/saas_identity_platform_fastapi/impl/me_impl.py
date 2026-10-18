@@ -124,19 +124,20 @@ class MeApiImpl(BaseMeApi):
             zero_uuid = UUID(int=0)
 
             def _node(row: SysMenu) -> EffectiveMenuNode:
-                # 契约 parent_id 声明必填 UUID，参照实测序列化 null——构造器会拒 None，
-                # 走 model_construct 绕开校验层（生成区禁改，响应序列化 parent_id: null）
-                return EffectiveMenuNode.model_construct(
+                # 契约 5.112①（2026-10-18 人批）：parentId required+nullable——根 sentinel
+                # （DB 零值 UUID）→ None 正常构造，不再 model_construct 绕校验层
+                # （kwargs 走别名 camelCase，本仓 impl 惯例 = mypy 合成签名的键）
+                return EffectiveMenuNode(
                     id=row.id,
-                    client_id=row.client_id,
-                    parent_id=None if row.parent_id == zero_uuid else row.parent_id,
+                    clientId=row.client_id,
+                    parentId=None if row.parent_id == zero_uuid else row.parent_id,
                     title=row.title,
                     type=menu_type_from_db(row.type),
                     path=row.path,
                     component=row.component,
                     perms=row.perms,
                     icon=row.icon,
-                    sort_order=row.sort_order,
+                    sortOrder=row.sort_order,
                     children=[],
                 )
 
