@@ -2,8 +2,9 @@
 
 from typing import ClassVar, Dict, List, Tuple  # noqa: F401
 
-from pydantic import StrictInt, StrictStr
+from pydantic import Field, StrictInt, StrictStr
 from typing import Any, Optional
+from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.create_sys_role_request import CreateSysRoleRequest
 from saas_identity_platform_fastapi.models.error_response import ErrorResponse
 from saas_identity_platform_fastapi.models.sys_role import SysRole
@@ -21,8 +22,8 @@ class BaseTenantRolesApi:
         self,
         tenantId: StrictStr,
         client_id: Optional[StrictStr],
-        page: Optional[StrictInt],
-        page_size: Optional[StrictInt],
+        page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")],
+        page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")],
     ) -> TenantRolesListSysRoles200Response:
         ...
 

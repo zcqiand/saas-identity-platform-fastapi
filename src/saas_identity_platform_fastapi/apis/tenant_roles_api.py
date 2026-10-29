@@ -23,8 +23,9 @@ from fastapi import (  # noqa: F401
 )
 
 from saas_identity_platform_fastapi.models.extra_models import TokenModel  # noqa: F401
-from pydantic import StrictInt, StrictStr
+from pydantic import Field, StrictInt, StrictStr
 from typing import Any, Optional
+from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.create_sys_role_request import CreateSysRoleRequest
 from saas_identity_platform_fastapi.models.error_response import ErrorResponse
 from saas_identity_platform_fastapi.models.sys_role import SysRole
@@ -51,8 +52,8 @@ for _, name, _ in pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + "."):
 async def tenant_roles_list_sys_roles(
     tenantId: StrictStr = Path(..., description=""),
     client_id: Optional[StrictStr] = Query(None, description="", alias="clientId"),
-    page: Optional[StrictInt] = Query(None, description="", alias="page"),
-    page_size: Optional[StrictInt] = Query(None, description="", alias="pageSize"),
+    page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")] = Query(None, description="页码，0 基（Spring Data Pageable）：首页 page&#x3D;0。", alias="page"),
+    page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")] = Query(None, description="每页条数。", alias="pageSize"),
 ) -> TenantRolesListSysRoles200Response:
     if not BaseTenantRolesApi.subclasses:
         raise HTTPException(status_code=500, detail="Not implemented")

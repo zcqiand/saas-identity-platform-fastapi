@@ -33,8 +33,8 @@ class TenantRolesListSysRoles200Response(BaseModel):
     TenantRolesListSysRoles200Response
     """ # noqa: E501
     items: List[SysRole]
-    page: StrictInt = Field(json_schema_extra={"examples": [0]})
-    page_size: StrictInt = Field(alias="pageSize", json_schema_extra={"examples": [20]})
+    page: StrictInt = Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。", json_schema_extra={"examples": [0]})
+    page_size: StrictInt = Field(description="每页条数。", alias="pageSize", json_schema_extra={"examples": [20]})
     total: StrictInt = Field(json_schema_extra={"examples": [0]})
     __properties: ClassVar[List[str]] = ["items", "page", "pageSize", "total"]
 

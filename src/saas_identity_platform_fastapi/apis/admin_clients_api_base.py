@@ -2,8 +2,9 @@
 
 from typing import ClassVar, Dict, List, Tuple  # noqa: F401
 
-from pydantic import StrictInt, StrictStr
+from pydantic import Field, StrictInt, StrictStr
 from typing import Any, Optional
+from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.admin_clients_list_clients200_response import AdminClientsListClients200Response
 from saas_identity_platform_fastapi.models.admin_clients_set_client_status_request import AdminClientsSetClientStatusRequest
 from saas_identity_platform_fastapi.models.create_o_auth_client_request import CreateOAuthClientRequest
@@ -20,8 +21,8 @@ class BaseAdminClientsApi:
         BaseAdminClientsApi.subclasses = BaseAdminClientsApi.subclasses + (cls,)
     async def admin_clients_list_clients(
         self,
-        page: Optional[StrictInt],
-        page_size: Optional[StrictInt],
+        page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")],
+        page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")],
     ) -> AdminClientsListClients200Response:
         ...
 
