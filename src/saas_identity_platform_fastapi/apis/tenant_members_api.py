@@ -23,9 +23,8 @@ from fastapi import (  # noqa: F401
 )
 
 from saas_identity_platform_fastapi.models.extra_models import TokenModel  # noqa: F401
-from pydantic import Field, StrictInt, StrictStr
+from pydantic import StrictInt, StrictStr
 from typing import Any, Optional
-from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.create_sys_user_request import CreateSysUserRequest
 from saas_identity_platform_fastapi.models.error_response import ErrorResponse
 from saas_identity_platform_fastapi.models.set_tenant_member_roles_request import SetTenantMemberRolesRequest
@@ -56,10 +55,11 @@ for _, name, _ in pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + "."):
 )
 async def tenant_members_list_tenant_users(
     tenantId: StrictStr = Path(..., description=""),
-    page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")] = Query(None, description="页码，0 基（Spring Data Pageable）：首页 page&#x3D;0。", alias="page"),
-    page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")] = Query(None, description="每页条数。", alias="pageSize"),
+    page: Optional[StrictInt] = Query(None, description="", alias="page"),
+    page_size: Optional[StrictInt] = Query(None, description="", alias="pageSize"),
     status: Optional[TenantMemberStatus] = Query(None, description="", alias="status"),
 ) -> TenantMembersListTenantUsers200Response:
+    """分页：page 0 基（Spring Data Pageable），首页 page&#x3D;0；pageSize 每页条数。"""
     if not BaseTenantMembersApi.subclasses:
         raise HTTPException(status_code=500, detail="Not implemented")
     return await BaseTenantMembersApi.subclasses[0]().tenant_members_list_tenant_users(tenantId, page, page_size, status)

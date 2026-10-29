@@ -23,9 +23,8 @@ from fastapi import (  # noqa: F401
 )
 
 from saas_identity_platform_fastapi.models.extra_models import TokenModel  # noqa: F401
-from pydantic import Field, StrictInt, StrictStr
+from pydantic import StrictInt, StrictStr
 from typing import Any, Optional
-from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.error_response import ErrorResponse
 from saas_identity_platform_fastapi.models.subscribe_tenant_application_request import SubscribeTenantApplicationRequest
 from saas_identity_platform_fastapi.models.tenant_application import TenantApplication
@@ -51,9 +50,10 @@ for _, name, _ in pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + "."):
 )
 async def tenant_applications_list_tenant_applications(
     tenantId: StrictStr = Path(..., description=""),
-    page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")] = Query(None, description="页码，0 基（Spring Data Pageable）：首页 page&#x3D;0。", alias="page"),
-    page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")] = Query(None, description="每页条数。", alias="pageSize"),
+    page: Optional[StrictInt] = Query(None, description="", alias="page"),
+    page_size: Optional[StrictInt] = Query(None, description="", alias="pageSize"),
 ) -> TenantApplicationsListTenantApplications200Response:
+    """分页：page 0 基（Spring Data Pageable），首页 page&#x3D;0；pageSize 每页条数。"""
     if not BaseTenantApplicationsApi.subclasses:
         raise HTTPException(status_code=500, detail="Not implemented")
     return await BaseTenantApplicationsApi.subclasses[0]().tenant_applications_list_tenant_applications(tenantId, page, page_size)

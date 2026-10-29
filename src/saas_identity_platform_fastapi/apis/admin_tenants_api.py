@@ -23,9 +23,8 @@ from fastapi import (  # noqa: F401
 )
 
 from saas_identity_platform_fastapi.models.extra_models import TokenModel  # noqa: F401
-from pydantic import Field, StrictInt, StrictStr
+from pydantic import StrictInt, StrictStr
 from typing import Any, Optional
-from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.admin_tenants_list_tenants200_response import AdminTenantsListTenants200Response
 from saas_identity_platform_fastapi.models.create_tenant_request import CreateTenantRequest
 from saas_identity_platform_fastapi.models.error_response import ErrorResponse
@@ -50,9 +49,10 @@ for _, name, _ in pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + "."):
     response_model_by_alias=True,
 )
 async def admin_tenants_list_tenants(
-    page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")] = Query(None, description="页码，0 基（Spring Data Pageable）：首页 page&#x3D;0。", alias="page"),
-    page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")] = Query(None, description="每页条数。", alias="pageSize"),
+    page: Optional[StrictInt] = Query(None, description="", alias="page"),
+    page_size: Optional[StrictInt] = Query(None, description="", alias="pageSize"),
 ) -> AdminTenantsListTenants200Response:
+    """分页：page 0 基（Spring Data Pageable），首页 page&#x3D;0；pageSize 每页条数。"""
     if not BaseAdminTenantsApi.subclasses:
         raise HTTPException(status_code=500, detail="Not implemented")
     return await BaseAdminTenantsApi.subclasses[0]().admin_tenants_list_tenants(page, page_size)

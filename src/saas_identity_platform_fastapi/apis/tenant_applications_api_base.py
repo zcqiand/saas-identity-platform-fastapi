@@ -2,9 +2,8 @@
 
 from typing import ClassVar, Dict, List, Tuple  # noqa: F401
 
-from pydantic import Field, StrictInt, StrictStr
+from pydantic import StrictInt, StrictStr
 from typing import Any, Optional
-from typing_extensions import Annotated
 from saas_identity_platform_fastapi.models.error_response import ErrorResponse
 from saas_identity_platform_fastapi.models.subscribe_tenant_application_request import SubscribeTenantApplicationRequest
 from saas_identity_platform_fastapi.models.tenant_application import TenantApplication
@@ -21,9 +20,10 @@ class BaseTenantApplicationsApi:
     async def tenant_applications_list_tenant_applications(
         self,
         tenantId: StrictStr,
-        page: Annotated[Optional[StrictInt], Field(description="页码，0 基（Spring Data Pageable）：首页 page=0。")],
-        page_size: Annotated[Optional[StrictInt], Field(description="每页条数。")],
+        page: Optional[StrictInt],
+        page_size: Optional[StrictInt],
     ) -> TenantApplicationsListTenantApplications200Response:
+        """分页：page 0 基（Spring Data Pageable），首页 page&#x3D;0；pageSize 每页条数。"""
         ...
 
 
