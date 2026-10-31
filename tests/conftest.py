@@ -1,13 +1,14 @@
-"""pytest 适配器：@pytest.mark.fn -> suite 契约的 .state/trace.json。"""
+"""仓专属 fixtures 的 conftest——harness trace 钩子在 tests/harness_trace.py。
+
+5.126 拆分重构：trace 钩子（harness 机器件，sync 面）迁出，本文件仓专属 fixtures。
+"""
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import bcrypt
@@ -32,33 +33,10 @@ from saas_identity_platform_fastapi.entities import (
     t_tenant_member_role,
 )
 from saas_identity_platform_fastapi.impl.config import AppConfig, normalize_database_url
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line(
-        "markers", "fn(id, ...): 该测试验证的功能子项 ID，如 @pytest.mark.fn('M01.F01.I14')"
-    )
-
-
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    if os.environ.get("TRACE_MAP") != "1":
-        return
-    entries = []
-    for item in items:
-        fns: list[str] = []
-        for marker in item.iter_markers(name="fn"):
-            fns.extend(str(a) for a in marker.args)
-        inert = any(item.get_closest_marker(n) is not None for n in ("skip", "skipif", "xfail"))
-        entries.append(
-            {"test": item.nodeid, "fns": [] if inert else sorted(set(fns)), "inert": inert}
-        )
-    out = Path(str(config.rootpath)) / ".state" / "trace.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        json.dumps({"schema": 1, "tests": entries}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
+from tests.harness_trace import (  # noqa: F401 —— hook 命名导入进本命名空间供 pytest 挂载
+    pytest_collection_modifyitems,
+    pytest_configure,
+)
 
 SCRATCH_DB = "saas_fastapi_scratch"
 
