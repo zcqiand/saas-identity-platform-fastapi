@@ -12,6 +12,8 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
+from sqlalchemy.orm import Session
+
 from saas_identity_platform_fastapi.apis.oauth_api_base import BaseOauthApi
 from saas_identity_platform_fastapi.entities import (
     OauthAccessToken,
@@ -38,6 +40,11 @@ from saas_identity_platform_fastapi.models.token_response import TokenResponse
 
 CODE_TTL_MINUTES = 5
 _INT32_MAX = 2_147_483_647
+
+
+def _discard_code(session: Session, code: str) -> int:
+    """按 code 谓词删行，返回影响行数（5.123① claim 判定的接缝，禁裸删）。"""
+    return session.query(OauthCode).filter_by(code=code).delete(synchronize_session=False)
 
 
 def _redirect_allowed(whitelist_csv: str, requested: str) -> bool:
@@ -168,19 +175,22 @@ class OauthApiImpl(BaseOauthApi):
         if row is None:
             raise BadRequestError("INVALID_GRANT: code 不存在或已被使用")
         if row.expires_at is not None and as_utc(row.expires_at) < now_utc():
-            session.delete(row)
+            _discard_code(session, token_request.code)
             session.commit()
             raise BadRequestError("INVALID_GRANT: expired code")
         if token_request.redirect_uri != row.redirect_uri:
-            session.delete(row)
+            _discard_code(session, token_request.code)
             session.commit()
             raise BadRequestError("INVALID_GRANT: redirectUri mismatch")
         user_id: uuid.UUID = row.user_id
         tenant_id: uuid.UUID = row.tenant_id
         scope: str | None = row.scope
-        # 一次性消费：删 code 行，防重放
-        session.delete(row)
+        # 一次性消费 claim 原子化（5.123①）：谓词删并校验影响行数——「读到行但删除
+        # 未生效」（0 行）的并发输家必须 400 拒签，禁止 read-then-delete 裸删
+        claimed = _discard_code(session, token_request.code)
         session.commit()
+        if claimed == 0:
+            raise BadRequestError("INVALID_GRANT: code 不存在或已被使用")
         refresh_token = TokenIssuer(session).persist_token_pair(
             user_id, tenant_id, client.client_id, scope
         )
@@ -219,14 +229,21 @@ class OauthApiImpl(BaseOauthApi):
             raise BadRequestError("INVALID_GRANT: refreshToken 缺少 user/tenant 绑定")
         user_id: uuid.UUID = rt.user_id
         tenant_id: uuid.UUID = rt.tenant_id
-        # rotate：旧 rt 标 revoked
+        # 5.123② 轮换段原子化：撤销不先行 commit，随签发段同 commit 落库；
+        # 签发段失败回滚恢复旧行、同一 refresh 可重试（修前 revoke 先行落库，
+        # 签发段故障留「旧废新未落」半态）
         rt.revoked = True
-        session.commit()
         # 新 refresh 行的 client_id 以旧 rt 行绑定的值为准，不信任请求体（springboot 参照）
         client_id: str = rt.client_id if rt.client_id else client.client_id
         access_row = session.get(OauthAccessToken, rt.access_token_id)
         scope: str | None = access_row.scope if access_row is not None else None
-        new_refresh = TokenIssuer(session).persist_token_pair(user_id, tenant_id, client_id, scope)
+        try:
+            new_refresh = TokenIssuer(session).persist_token_pair(
+                user_id, tenant_id, client_id, scope
+            )
+        except Exception:
+            session.rollback()
+            raise
         return _token_response(
             jwt_issuer,
             jwt_issuer.issue_access_token(user_id, tenant_id),
