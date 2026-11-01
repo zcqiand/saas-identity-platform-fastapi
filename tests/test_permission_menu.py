@@ -305,6 +305,55 @@ def test_client_menus_list_flat_and_auth(client: TestClient) -> None:
     assert one["perms"] == "sys:user:list"
 
 
+@pytest.mark.fn("M04.F04.I01")
+def test_client_menus_list_ordered_by_sort_order_then_id(client: TestClient) -> None:
+    """5.121 家族裁定：菜单列表确定性——sortOrder 主键 + id 次级键。
+
+    乱序插入（sort=2 先建、sort=1 后建）钉主键；8 条并列 sortOrder 钉次级键
+    （修前 PG heap 按插入序吐，插入序 == id 升序概率 1/8!，红是确定的）。
+    reorder 响应同面同钉（5.121 原登记：list/reorder 两处都只按 sort_order）。
+    """
+    headers = _bearer(client)
+    # 乱序插入：sortOrder=2 先建、1 后建——无 ORDER BY 时 heap 按插入序返回，必红
+    late = client.post(
+        f"/api/v1/clients/{SECOND_CLIENT_ID}/menus",
+        headers=headers,
+        json={"title": "次", "type": "menu", "sortOrder": 1},
+    ).json()
+    early = client.post(
+        f"/api/v1/clients/{SECOND_CLIENT_ID}/menus",
+        headers=headers,
+        json={"title": "首", "type": "menu", "sortOrder": 2},
+    ).json()
+    # 8 条并列（sort=5）：钉 id 次级键
+    tied = [
+        client.post(
+            f"/api/v1/clients/{SECOND_CLIENT_ID}/menus",
+            headers=headers,
+            json={"title": f"并列{i}", "type": "menu", "sortOrder": 5},
+        ).json()["id"]
+        for i in range(8)
+    ]
+    items = client.get(f"/api/v1/clients/{SECOND_CLIENT_ID}/menus", headers=headers).json()
+    ids = [m["id"] for m in items]
+    # 主键：sortOrder 升序（1 在 2 前）
+    assert ids.index(late["id"]) < ids.index(early["id"])
+    # 次级键：响应中并列组子序列（保持响应序）== id 升序
+    assert [m for m in ids if m in tied] == sorted(tied)
+    # 全列表性质：(sortOrder, id) 双键全序
+    keys = [(m["sortOrder"], m["id"]) for m in items]
+    assert keys == sorted(keys)
+    # reorder 响应同面：全列表 (sortOrder, id) 双键全序
+    reordered = client.put(
+        f"/api/v1/clients/{SECOND_CLIENT_ID}/menus/{late['id']}/reorder",
+        headers=headers,
+        json={"orderedMenuIds": [late["id"]]},
+    )
+    assert reordered.status_code == 200, reordered.text
+    rkeys = [(m["sortOrder"], m["id"]) for m in reordered.json()]
+    assert rkeys == sorted(rkeys)
+
+
 @pytest.mark.fn("M04.F04.I02")
 def test_client_menus_create_defaults(client: TestClient) -> None:
     headers = _bearer(client)

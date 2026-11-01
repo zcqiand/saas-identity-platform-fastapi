@@ -89,8 +89,14 @@ class ClientMenusApiImpl(BaseClientMenusApi):
     async def client_menus_list_sys_menus(self, clientId: str) -> list[SysMenuDto]:  # noqa: N803
         ctx = get_context()
         require_bearer(ctx, ctx.request.app.state.jwt)
-        rows = ctx.session.query(SysMenu).filter_by(client_id=clientId).all()
-        return [_menu_dto(row) for row in rows]  # 扁平不组树、无排序、不分页
+        # 5.121 家族裁定：sortOrder 主键 + id 次级键（与 rails/laravel/aspnetcore/go 同形）
+        rows = (
+            ctx.session.query(SysMenu)
+            .filter_by(client_id=clientId)
+            .order_by(SysMenu.sort_order, SysMenu.id)
+            .all()
+        )
+        return [_menu_dto(row) for row in rows]  # 扁平不组树、不分页
 
     async def client_menus_create_sys_menu(
         self,
@@ -195,5 +201,8 @@ class ClientMenusApiImpl(BaseClientMenusApi):
             ctx.session.commit()
         return [
             _menu_dto(m)
-            for m in ctx.session.query(SysMenu).filter_by(client_id=row.client_id).all()
+            for m in ctx.session.query(SysMenu)
+            .filter_by(client_id=row.client_id)
+            .order_by(SysMenu.sort_order, SysMenu.id)
+            .all()
         ]
